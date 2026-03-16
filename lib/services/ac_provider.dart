@@ -54,4 +54,29 @@ class ACProvider with ChangeNotifier {
     _isConnected = connected;
     notifyListeners();
   }
+
+  String? _lastError;
+  String? get lastError => _lastError;
+
+  void updateFromStatus(String status) {
+    if (status.startsWith('ERR:')) {
+      _lastError = status.substring(4);
+      notifyListeners();
+      return;
+    }
+    
+    _lastError = null;
+    // Expected format: AC=OFF|PRESENCE=YES
+    final parts = status.split('|');
+    for (var part in parts) {
+      if (part.startsWith('PRESENCE=')) {
+        final isDetected = part.split('=')[1] == 'YES';
+        if (_isPresenceDetected != isDetected) {
+          _isPresenceDetected = isDetected;
+        }
+      }
+      // You can also handle AC=ON/OFF here if needed
+    }
+    notifyListeners();
+  }
 }

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
+import 'package:ac_automation/models/ac_profile.dart';
 
 class ACAutomationApp extends StatelessWidget {
   const ACAutomationApp({super.key});
@@ -31,7 +32,10 @@ class ACAutomationApp extends StatelessWidget {
               ),
               GoRoute(
                 path: '/control',
-                builder: (context, state) => const ControlScreen(),
+                builder: (context, state) {
+                  final profile = state.extra as ACProfile;
+                  return ControlScreen(profile: profile);
+                },
               ),
               GoRoute(
                 path: '/setup',

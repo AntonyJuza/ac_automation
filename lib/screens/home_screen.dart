@@ -7,8 +7,27 @@ import 'package:ac_automation/widgets/status_indicator.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Listen to BLE status messages and update the AC provider
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bleService = Provider.of<BLEService>(context, listen: false);
+      final acProvider = Provider.of<ACProvider>(context, listen: false);
+      
+      bleService.statusStream.listen((message) {
+        acProvider.updateFromStatus(message);
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,7 +206,7 @@ class HomeScreen extends StatelessWidget {
   Widget _buildDeviceCard(
       BuildContext context, dynamic profile, ACProvider provider) {
     return GestureDetector(
-      onTap: () => context.push('/control'),
+      onTap: () => context.push('/control', extra: profile),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -204,10 +223,20 @@ class HomeScreen extends StatelessWidget {
               children: [
                 const Icon(Icons.ac_unit,
                     color: AppColors.primaryBrand, size: 28),
-                Switch(
-                  value: true,
-                  onChanged: (val) {},
-                  activeThumbColor: AppColors.primaryBrand,
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline,
+                          color: AppColors.statusRed, size: 22),
+                      onPressed: () => _showDeleteDialog(context, profile, provider),
+                      constraints: const BoxConstraints(),
+                    ),
+                    Switch(
+                      value: true,
+                      onChanged: (val) {},
+                      activeThumbColor: AppColors.primaryBrand,
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -261,6 +290,29 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showDeleteDialog(BuildContext context, dynamic profile, ACProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Profile'),
+        content: Text('Are you sure you want to delete "${profile.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.deleteProfile(profile.id);
+              Navigator.pop(context);
+            },
+            child: const Text('Delete', style: TextStyle(color: AppColors.statusRed)),
+          ),
+        ],
       ),
     );
   }

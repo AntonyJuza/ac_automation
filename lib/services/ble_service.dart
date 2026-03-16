@@ -5,76 +5,60 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-/// BLE connection states for the UI to react to
 enum BLEState {
-  idle,       // Not scanning, not connected
-  scanning,   // Actively scanning for devices
-  connecting, // Found device, attempting to connect
-  connected,  // Connected and characteristics discovered
-  error,      // Something went wrong
+  idle,
+  scanning,
+  connecting,
+  connected,
+  error,
 }
 
-/// Commands sent to ESP32 via the command characteristic
 class BLECommands {
-  static const String startLearn  = 'LEARN_START';
-  static const String stopLearn   = 'LEARN_STOP';
-  static const String getStatus   = 'STATUS';
-  // IR transmit: SEND:<button_key>:<raw_data_csv>
+  static const String startLearn = 'LEARN_START';
+  static const String stopLearn  = 'LEARN_STOP';
+  static const String getStatus  = 'STATUS';
   static String sendIR(String key, List<int> rawData) =>
       'SEND:$key:${rawData.join(',')}';
+  static String saveProfile(String json) => 'SAVE_PROFILE:$json';
+  static String setActive(String id)     => 'SET_ACTIVE:$id';
+  static String deleteProfile(String id) => 'DELETE:$id';
 }
 
 class BLEService extends ChangeNotifier {
-  // ---------- State ----------
   BLEState _state = BLEState.idle;
   BluetoothDevice? _device;
-  BluetoothCharacteristic? _cmdChar;    // Write
+  BluetoothCharacteristic? _cmdChar;
 
-  // Scanned devices list (shown in scan UI)
   final List<ScanResult> _scanResults = [];
 
-  // Stream controllers so screens can listen to incoming data
-  final _statusController  = StreamController<String>.broadcast();
-  final _irDataController  = StreamController<List<int>>.broadcast();
+  // Status stream: carries String messages from ESP32
+  final _statusController = StreamController<String>.broadcast();
 
-  // Subscriptions to clean up on disconnect
+  // IR data stream: carries parsed List<int> pulse arrays
+  final _irDataController = StreamController<List<int>>.broadcast();
+
   StreamSubscription? _statusSub;
   StreamSubscription? _irDataSub;
   StreamSubscription? _scanSub;
 
-  // ---------- Getters ----------
-  BLEState           get state        => _state;
-  bool               get isConnected  => _state == BLEState.connected;
-  bool               get isScanning   => _state == BLEState.scanning;
-  BluetoothDevice?   get device       => _device;
-  List<ScanResult>   get scanResults  => List.unmodifiable(_scanResults);
-  Stream<String>     get statusStream => _statusController.stream;
-  Stream<List<int>>  get irDataStream => _irDataController.stream;
+  BLEState          get state        => _state;
+  bool              get isConnected  => _state == BLEState.connected;
+  bool              get isScanning   => _state == BLEState.scanning;
+  BluetoothDevice?  get device       => _device;
+  List<ScanResult>  get scanResults  => List.unmodifiable(_scanResults);
+  Stream<String>    get statusStream => _statusController.stream;
+  Stream<List<int>> get irDataStream => _irDataController.stream;
 
   // ---------- Scan ----------
 
-  /// Start BLE scan. Handles runtime permissions and filters (disabled for testing).
   Future<void> startScan() async {
     if (_state == BLEState.scanning) return;
 
-    // Request permissions for Android 12+ (Bluetooth) and Android 11- (Location)
-    Map<Permission, PermissionStatus> statuses = await [
+    await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
       Permission.location,
     ].request();
-
-    if (statuses[Permission.bluetoothScan]?.isDenied == true ||
-        statuses[Permission.location]?.isDenied == true) {
-      debugPrint('[BLE] Missing required permissions');
-      // Ideally we would show a UI error here.
-    }
-
-    // Check if Bluetooth is ON
-    if (await FlutterBluePlus.adapterState.first == BluetoothAdapterState.off) {
-      debugPrint('[BLE] Bluetooth is off');
-      // Ideally we would prompt user to turn on Bluetooth here.
-    }
 
     _scanResults.clear();
     _setState(BLEState.scanning);
@@ -85,8 +69,8 @@ class BLEService extends ChangeNotifier {
       _scanSub = FlutterBluePlus.scanResults.listen((results) {
         bool changed = false;
         for (final r in results) {
-          final idx = _scanResults.indexWhere(
-              (s) => s.device.remoteId == r.device.remoteId);
+          final idx = _scanResults
+              .indexWhere((s) => s.device.remoteId == r.device.remoteId);
           if (idx >= 0) {
             _scanResults[idx] = r;
           } else {
@@ -98,13 +82,11 @@ class BLEService extends ChangeNotifier {
       });
 
       await FlutterBluePlus.startScan(
-        // Temporarily commented out to see ALL nearby devices for testing
-        // withServices: [Guid(BLEConstants.serviceUuid)],
+        withServices: [Guid(BLEConstants.serviceUuid)],
         timeout: const Duration(seconds: 10),
       );
 
       if (_state == BLEState.scanning) _setState(BLEState.idle);
-
     } catch (e) {
       debugPrint('[BLE] Scan error: $e');
       _setState(BLEState.error);
@@ -135,8 +117,15 @@ class BLEService extends ChangeNotifier {
       });
 
       await _discoverServices(device);
-      _setState(BLEState.connected);
+      
+      // Request larger MTU to handle IR data and profiles
+      try {
+        await device.requestMtu(512);
+      } catch (e) {
+        debugPrint('[BLE] MTU request failed: $e');
+      }
 
+      _setState(BLEState.connected);
     } catch (e) {
       debugPrint('[BLE] Connect error: $e');
       _setState(BLEState.error);
@@ -151,8 +140,8 @@ class BLEService extends ChangeNotifier {
   void _handleDisconnect() {
     _statusSub?.cancel();
     _irDataSub?.cancel();
-    _cmdChar    = null;
-    _device     = null;
+    _cmdChar = null;
+    _device  = null;
     _setState(BLEState.idle);
   }
 
@@ -174,6 +163,7 @@ class BLEService extends ChangeNotifier {
           if (uuid == BLEConstants.charStatusUuid.toLowerCase()) {
             await char.setNotifyValue(true);
             _statusSub = char.lastValueStream.listen((value) {
+              if (value.isEmpty) return;
               final msg = utf8.decode(value);
               debugPrint('[BLE] Status: $msg');
               _statusController.add(msg);
@@ -184,8 +174,24 @@ class BLEService extends ChangeNotifier {
           if (uuid == BLEConstants.charIrDataUuid.toLowerCase()) {
             await char.setNotifyValue(true);
             _irDataSub = char.lastValueStream.listen((value) {
-              debugPrint('[BLE] IR data: ${value.length} bytes');
-              _irDataController.add(value);
+              if (value.isEmpty) return;
+
+              // ESP32 sends IR data as CSV string: "100,200,300,..."
+              // Decode bytes → string → split → List<int>
+              final csv = utf8.decode(value);
+              debugPrint('[BLE] IR data raw: $csv');
+
+              final parsed = csv
+                  .split(',')
+                  .where((s) => s.trim().isNotEmpty)
+                  .map((s) => int.tryParse(s.trim()) ?? 0)
+                  .where((v) => v > 0)
+                  .toList();
+
+              if (parsed.isNotEmpty) {
+                debugPrint('[BLE] IR data parsed: ${parsed.length} values');
+                _irDataController.add(parsed);
+              }
             });
             debugPrint('[BLE] IR data characteristic subscribed');
           }
@@ -195,22 +201,32 @@ class BLEService extends ChangeNotifier {
     }
 
     if (_cmdChar == null) {
-      throw Exception(
-          'Command characteristic not found. Check ESP32 firmware UUIDs.');
+      throw Exception('Command characteristic not found. Check ESP32 firmware UUIDs.');
     }
   }
 
   // ---------- Write Commands ----------
 
-  /// Write a string command to the ESP32 command characteristic
   Future<bool> sendCommand(String command) async {
     if (_cmdChar == null || !isConnected) {
       debugPrint('[BLE] Cannot send — not connected');
       return false;
     }
     try {
-      await _cmdChar!.write(utf8.encode(command), withoutResponse: false);
-      debugPrint('[BLE] Sent: $command');
+      // BLE MTU is 512 bytes. For large SAVE_PROFILE commands split into chunks.
+      final bytes = utf8.encode(command);
+      if (bytes.length <= 500) {
+        await _cmdChar!.write(bytes, withoutResponse: false);
+      } else {
+        // Chunked write for large payloads (profile save)
+        const chunkSize = 500;
+        for (int i = 0; i < bytes.length; i += chunkSize) {
+          final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+          await _cmdChar!.write(bytes.sublist(i, end), withoutResponse: false);
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      debugPrint('[BLE] Sent ${bytes.length} bytes');
       return true;
     } catch (e) {
       debugPrint('[BLE] Write error: $e');
@@ -224,10 +240,19 @@ class BLEService extends ChangeNotifier {
   Future<bool> transmitIR(String buttonKey, List<int> rawData) =>
       sendCommand(BLECommands.sendIR(buttonKey, rawData));
 
+  /// Send full profile JSON to ESP32 for NVS storage
+  Future<bool> saveProfileToDevice(String profileJson) =>
+      sendCommand(BLECommands.saveProfile(profileJson));
+
+  /// Tell ESP32 which profile to use for automation
+  Future<bool> setActiveProfile(String profileId) =>
+      sendCommand(BLECommands.setActive(profileId));
+
+  Future<bool> deleteProfile(String profileId) =>
+      sendCommand(BLECommands.deleteProfile(profileId));
+
   // ---------- Capture one IR button ----------
 
-  /// Puts ESP32 into learn mode and waits for it to send back captured raw IR.
-  /// Returns raw pulse list, or null on timeout/error.
   Future<List<int>?> captureIRButton({
     Duration timeout = const Duration(seconds: 15),
   }) async {
@@ -248,8 +273,6 @@ class BLEService extends ChangeNotifier {
       return null;
     }
   }
-
-  // ---------- Helpers ----------
 
   void _setState(BLEState newState) {
     _state = newState;

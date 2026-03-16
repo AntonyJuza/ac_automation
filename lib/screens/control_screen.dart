@@ -3,14 +3,34 @@ import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/widgets/ac_button.dart';
 import 'dart:math' as math;
 
+import 'package:ac_automation/models/ac_profile.dart';
+import 'package:ac_automation/services/ac_provider.dart';
+import 'package:ac_automation/services/ble_service.dart';
+import 'package:provider/provider.dart';
+
 class ControlScreen extends StatefulWidget {
-  const ControlScreen({super.key});
+  final ACProfile profile;
+  const ControlScreen({super.key, required this.profile});
 
   @override
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
 class _ControlScreenState extends State<ControlScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bleService = Provider.of<BLEService>(context, listen: false);
+      final acProvider = Provider.of<ACProvider>(context, listen: false);
+      
+      // Keep provider in sync with BLE status if it arrives while on this screen
+      bleService.statusStream.listen((message) {
+        if (mounted) acProvider.updateFromStatus(message);
+      });
+    });
+  }
+
   double _temperature = 22.0;
   bool _isPowerOn = true;
   String _mode = 'Cool';
@@ -21,15 +41,29 @@ class _ControlScreenState extends State<ControlScreen> {
     return Scaffold(
       backgroundColor: AppColors.secondaryBackground,
       appBar: AppBar(
-        title: const Text('Living Room'),
+        title: Text(widget.profile.name),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
+      body: Column(
+        children: [
+          if (context.watch<ACProvider>().lastError != null)
+            Container(
+              width: double.infinity,
+              color: AppColors.statusRed,
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              child: Text(
+                'Hardware Error: ${context.watch<ACProvider>().lastError}',
+                style: const TextStyle(color: Colors.white, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
             const SizedBox(height: 40),
             // Temperature Hero Section
             Center(
@@ -56,7 +90,28 @@ class _ControlScreenState extends State<ControlScreen> {
                     label: 'Power',
                     isActive: _isPowerOn,
                     activeColor: _isPowerOn ? AppColors.primaryBrand : null,
-                    onTap: () => setState(() => _isPowerOn = !_isPowerOn),
+                    onTap: () async {
+                      final bleService = Provider.of<BLEService>(context, listen: false);
+                      final scaffoldMessenger = ScaffoldMessenger.of(context);
+                      final newState = !_isPowerOn;
+                      final key = newState ? 'power_on' : 'power_off';
+                      final button = widget.profile.buttons[key];
+                      if (button != null && button.rawData != null) {
+                        final success = await bleService.transmitIR(key, button.rawData!);
+                        if (success) {
+                          if (mounted) setState(() => _isPowerOn = newState);
+                        } else {
+                          scaffoldMessenger.showSnackBar(
+                            const SnackBar(content: Text('Failed to send command')),
+                          );
+                        }
+                      } else {
+                        // Optional: show a message that the button hasn't been learned
+                        scaffoldMessenger.showSnackBar(
+                          SnackBar(content: Text('Button "$key" not learned yet')),
+                        );
+                      }
+                    },
                   ),
                   ACButton(
                     icon: _getModeIcon(),
@@ -102,6 +157,9 @@ class _ControlScreenState extends State<ControlScreen> {
           ],
         ),
       ),
+    ),
+  ],
+),
     );
   }
 

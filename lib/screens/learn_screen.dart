@@ -7,6 +7,7 @@ import 'package:ac_automation/services/ble_service.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import 'dart:convert';
 
 // Each button step definition
 class _ButtonStep {
@@ -487,9 +488,12 @@ class _LearnScreenState extends State<LearnScreen> {
     });
   }
 
-  void _saveProfile() {
+  void _saveProfile() async {
+    final bleService = Provider.of<BLEService>(context, listen: false);
+    final acProvider = Provider.of<ACProvider>(context, listen: false);
+
     final profile = ACProfile(
-      id: const Uuid().v4(),
+      id: Uuid().v4(),
       name: widget.name,
       brand: widget.brand,
       model: widget.model,
@@ -499,7 +503,34 @@ class _LearnScreenState extends State<LearnScreen> {
       createdAt: DateTime.now(),
     );
 
-    Provider.of<ACProvider>(context, listen: false).addProfile(profile);
-    context.go('/');
+    // 1. Save locally on phone
+    await acProvider.addProfile(profile);
+
+    // 2. Send profile JSON to ESP32 for NVS storage
+    if (bleService.isConnected) {
+      final buttonsMap = _capturedData.map(
+        (key, value) => MapEntry(key, value),
+      );
+      final profileJson = json.encode({
+        'id':      profile.id,
+        'name':    profile.name,
+        'brand':   profile.brand,
+        'model':   profile.model ?? '',
+        'buttons': buttonsMap,
+      });
+
+      final saved = await bleService.saveProfileToDevice(profileJson);
+      if (saved) {
+        // 3. Tell ESP32 to use this profile for automation
+        await bleService.setActiveProfile(profile.id);
+        debugPrint('[App] Profile saved to ESP32 and set as active');
+      } else {
+        debugPrint('[App] Warning: Profile saved locally but ESP32 send failed');
+      }
+    } else {
+      debugPrint('[App] Not connected — profile saved locally only');
+    }
+
+    if (mounted) context.go('/');
   }
 }
