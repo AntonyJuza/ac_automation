@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import 'package:provider/provider.dart';
 import 'package:ac_automation/services/ac_provider.dart';
+import 'package:ac_automation/services/ble_service.dart';
 
 class ACAutomationApp extends StatelessWidget {
   const ACAutomationApp({super.key});
@@ -17,6 +18,7 @@ class ACAutomationApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ACProvider()),
+        ChangeNotifierProvider(create: (_) => BLEService()),
       ],
       child: Builder(
         builder: (context) {
