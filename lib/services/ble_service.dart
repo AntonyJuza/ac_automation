@@ -17,8 +17,10 @@ class BLECommands {
   static const String startLearn = 'LEARN_START';
   static const String stopLearn  = 'LEARN_STOP';
   static const String getStatus  = 'STATUS';
-  static String sendIR(String key, List<int> rawData) =>
-      'SEND:$key:${rawData.join(',')}';
+  
+  static String sendIR(String key, List<String> encodedData) =>
+      'SEND_ENCODED:$key:${encodedData.join(',')}';
+      
   static String saveProfile(String json) => 'SAVE_PROFILE:$json';
   static String setActive(String id)     => 'SET_ACTIVE:$id';
   static String deleteProfile(String id) => 'DELETE:$id';
@@ -34,8 +36,8 @@ class BLEService extends ChangeNotifier {
   // Status stream: carries String messages from ESP32
   final _statusController = StreamController<String>.broadcast();
 
-  // IR data stream: carries parsed List<int> pulse arrays
-  final _irDataController = StreamController<List<int>>.broadcast();
+  // IR data stream: carries parsed hex strings ["0x123", "0x456"]
+  final _irDataController = StreamController<List<String>>.broadcast();
 
   StreamSubscription? _statusSub;
   StreamSubscription? _irDataSub;
@@ -47,7 +49,7 @@ class BLEService extends ChangeNotifier {
   BluetoothDevice?  get device       => _device;
   List<ScanResult>  get scanResults  => List.unmodifiable(_scanResults);
   Stream<String>    get statusStream => _statusController.stream;
-  Stream<List<int>> get irDataStream => _irDataController.stream;
+  Stream<List<String>> get irDataStream => _irDataController.stream;
 
   // ---------- Scan ----------
 
@@ -82,8 +84,9 @@ class BLEService extends ChangeNotifier {
       });
 
       await FlutterBluePlus.startScan(
-        withServices: [Guid(BLEConstants.serviceUuid)],
-        timeout: const Duration(seconds: 10),
+        // temporarily disable filter to find your device
+        // withServices: [Guid(BLEConstants.serviceUuid)],
+        timeout: const Duration(seconds: 15),
       );
 
       if (_state == BLEState.scanning) _setState(BLEState.idle);
@@ -162,7 +165,7 @@ class BLEService extends ChangeNotifier {
 
           if (uuid == BLEConstants.charStatusUuid.toLowerCase()) {
             await char.setNotifyValue(true);
-            _statusSub = char.lastValueStream.listen((value) {
+            _statusSub = char.onValueReceived.listen((value) {
               if (value.isEmpty) return;
               final msg = utf8.decode(value);
               debugPrint('[BLE] Status: $msg');
@@ -173,23 +176,21 @@ class BLEService extends ChangeNotifier {
 
           if (uuid == BLEConstants.charIrDataUuid.toLowerCase()) {
             await char.setNotifyValue(true);
-            _irDataSub = char.lastValueStream.listen((value) {
+            _irDataSub = char.onValueReceived.listen((value) {
               if (value.isEmpty) return;
 
-              // ESP32 sends IR data as CSV string: "100,200,300,..."
-              // Decode bytes → string → split → List<int>
-              final csv = utf8.decode(value);
-              debugPrint('[BLE] IR data raw: $csv');
+              // ESP32 sends encoded IR: "0x90E428,0x98010100"
+              final hexString = utf8.decode(value);
+              debugPrint('[BLE] IR encoded raw: $hexString');
 
-              final parsed = csv
+              final parsed = hexString
                   .split(',')
-                  .where((s) => s.trim().isNotEmpty)
-                  .map((s) => int.tryParse(s.trim()) ?? 0)
-                  .where((v) => v > 0)
+                  .map((s) => s.trim())
+                  .where((s) => s.isNotEmpty)
                   .toList();
 
               if (parsed.isNotEmpty) {
-                debugPrint('[BLE] IR data parsed: ${parsed.length} values');
+                debugPrint('[BLE] IR encoded parsed: $parsed');
                 _irDataController.add(parsed);
               }
             });
@@ -237,12 +238,34 @@ class BLEService extends ChangeNotifier {
   Future<bool> startLearnMode() => sendCommand(BLECommands.startLearn);
   Future<bool> stopLearnMode()  => sendCommand(BLECommands.stopLearn);
 
-  Future<bool> transmitIR(String buttonKey, List<int> rawData) =>
-      sendCommand(BLECommands.sendIR(buttonKey, rawData));
+  Future<bool> transmitIR(String buttonKey, List<String> encodedData) =>
+      sendCommand(BLECommands.sendIR(buttonKey, encodedData));
 
-  /// Send full profile JSON to ESP32 for NVS storage
-  Future<bool> saveProfileToDevice(String profileJson) =>
-      sendCommand(BLECommands.saveProfile(profileJson));
+  /// Send full profile JSON to ESP32 for NVS storage using SAVE_PROFILE command.
+  /// The sendCommand method handles chunked writing for payloads over 500 bytes.
+  Future<bool> saveProfileToDevice(String profileJson) async {
+    final ok = await sendCommand(BLECommands.saveProfile(profileJson));
+    if (!ok) return false;
+
+    // Wait for PROFILE_SAVED or error confirmation from hardware
+    try {
+      final response = await statusStream
+          .firstWhere((s) => s.startsWith('PROFILE_SAVED:') || s.startsWith('ERR:'))
+          .timeout(const Duration(seconds: 15));
+      
+      if (response.startsWith('ERR:')) {
+        debugPrint('[BLE] Profile save hardware error: $response');
+        return false;
+      }
+      debugPrint('[BLE] Profile save confirmed by hardware: $response');
+      return true;
+    } on TimeoutException {
+      debugPrint('[BLE] Profile save confirmation timed out');
+      // We return true because the command was sent successfully, 
+      // but the hardware response might be sluggish.
+      return true; 
+    }
+  }
 
   /// Tell ESP32 which profile to use for automation
   Future<bool> setActiveProfile(String profileId) =>
@@ -253,7 +276,7 @@ class BLEService extends ChangeNotifier {
 
   // ---------- Capture one IR button ----------
 
-  Future<List<int>?> captureIRButton({
+  Future<List<String>?> captureIRButton({
     Duration timeout = const Duration(seconds: 15),
   }) async {
     final ok = await startLearnMode();

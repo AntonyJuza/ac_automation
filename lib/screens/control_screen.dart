@@ -96,8 +96,8 @@ class _ControlScreenState extends State<ControlScreen> {
                       final newState = !_isPowerOn;
                       final key = newState ? 'power_on' : 'power_off';
                       final button = widget.profile.buttons[key];
-                      if (button != null && button.rawData != null) {
-                        final success = await bleService.transmitIR(key, button.rawData!);
+                      if (button != null && button.encodedData != null) {
+                        final success = await bleService.transmitIR(key, button.encodedData!);
                         if (success) {
                           if (mounted) setState(() => _isPowerOn = newState);
                         } else {

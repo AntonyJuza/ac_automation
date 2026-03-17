@@ -1,21 +1,21 @@
 class IRButton {
   final String name;
-  final List<int>? rawData;
+  final List<String>? encodedData; // ["0x90E428", "0x98010100"]
 
   IRButton({
     required this.name,
-    this.rawData,
+    this.encodedData,
   });
 
   Map<String, dynamic> toJson() => {
     'name': name,
-    'rawData': rawData,
+    'encodedData': encodedData,
   };
 
   factory IRButton.fromJson(Map<String, dynamic> json) {
     return IRButton(
       name: json['name'],
-      rawData: json['rawData'] != null ? List<int>.from(json['rawData']) : null,
+      encodedData: json['encodedData'] != null ? List<String>.from(json['encodedData']) : null,
     );
   }
 }

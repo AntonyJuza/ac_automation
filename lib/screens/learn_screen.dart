@@ -53,7 +53,7 @@ class LearnScreen extends StatefulWidget {
 
 class _LearnScreenState extends State<LearnScreen> {
   int _currentStep = 0;
-  final Map<String, List<int>> _capturedData = {};
+  final Map<String, List<String>> _capturedData = {};
   
   // null = idle, true = waiting for hardware, false = captured/error
   bool _isCapturing = false;
@@ -374,7 +374,7 @@ class _LearnScreenState extends State<LearnScreen> {
                   ),
                   subtitle: captured
                       ? Text(
-                          '${_capturedData[step.key]!.length} bytes',
+                          'Encoded: ${_capturedData[step.key]!.join(", ")}',
                           style: const TextStyle(
                               fontSize: 11,
                               color: AppColors.textSecondary),
@@ -438,16 +438,16 @@ class _LearnScreenState extends State<LearnScreen> {
       _lastCaptureSuccess = false;
     });
 
-    final rawData = await bleService.captureIRButton(
+    final encodedData = await bleService.captureIRButton(
       timeout: const Duration(seconds: 15),
     );
 
     if (!mounted) return;
 
-    if (rawData != null && rawData.isNotEmpty) {
+    if (encodedData != null && encodedData.isNotEmpty) {
       final key = _steps[_currentStep].key;
       setState(() {
-        _capturedData[key] = rawData;
+        _capturedData[key] = encodedData;
         _isCapturing = false;
         _lastCaptureSuccess = true;
         _captureError = null;
@@ -498,7 +498,7 @@ class _LearnScreenState extends State<LearnScreen> {
       brand: widget.brand,
       model: widget.model,
       buttons: _capturedData.map(
-        (key, value) => MapEntry(key, IRButton(name: key, rawData: value)),
+        (key, value) => MapEntry(key, IRButton(name: key, encodedData: value)),
       ),
       createdAt: DateTime.now(),
     );
