@@ -96,8 +96,8 @@ class _ControlScreenState extends State<ControlScreen> {
                       final newState = !_isPowerOn;
                       final key = newState ? 'power_on' : 'power_off';
                       final button = widget.profile.buttons[key];
-                      if (button != null && button.encodedData != null) {
-                        final success = await bleService.transmitIR(key, button.encodedData!);
+                      if (button != null && button.isValid) {
+                        final success = await bleService.transmitButton(key, button);
                         if (success) {
                           if (mounted) setState(() => _isPowerOn = newState);
                         } else {
@@ -106,7 +106,6 @@ class _ControlScreenState extends State<ControlScreen> {
                           );
                         }
                       } else {
-                        // Optional: show a message that the button hasn't been learned
                         scaffoldMessenger.showSnackBar(
                           SnackBar(content: Text('Button "$key" not learned yet')),
                         );

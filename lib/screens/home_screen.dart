@@ -62,6 +62,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? () => bleService.disconnect()
                 : () => _showScanSheet(context, bleService),
           ),
+          if (bleService.isConnected)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
+              onSelected: (value) {
+                if (value == 'dynamic_config') {
+                  context.push('/dynamic_config');
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'dynamic_config',
+                  child: Text('Dynamic Config Upload'),
+                ),
+              ],
+            ),
         ],
       ),
       body: bleService.isConnected

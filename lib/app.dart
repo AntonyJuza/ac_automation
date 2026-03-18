@@ -4,6 +4,7 @@ import 'package:ac_automation/screens/home_screen.dart';
 import 'package:ac_automation/screens/control_screen.dart';
 import 'package:ac_automation/screens/setup_screen.dart';
 import 'package:ac_automation/screens/learn_screen.dart';
+import 'package:ac_automation/screens/dynamic_config_screen.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:provider/provider.dart';
@@ -51,6 +52,10 @@ class ACAutomationApp extends StatelessWidget {
                     model: extra['model'],
                   );
                 },
+              ),
+              GoRoute(
+                path: '/dynamic_config',
+                builder: (context, state) => const DynamicConfigScreen(),
               ),
             ],
           );

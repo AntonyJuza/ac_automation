@@ -53,7 +53,7 @@ class LearnScreen extends StatefulWidget {
 
 class _LearnScreenState extends State<LearnScreen> {
   int _currentStep = 0;
-  final Map<String, List<String>> _capturedData = {};
+  final Map<String, IRButton> _capturedData = {};
   
   // null = idle, true = waiting for hardware, false = captured/error
   bool _isCapturing = false;
@@ -374,7 +374,9 @@ class _LearnScreenState extends State<LearnScreen> {
                   ),
                   subtitle: captured
                       ? Text(
-                          'Encoded: ${_capturedData[step.key]!.join(", ")}',
+                          _capturedData[step.key]!.isEncoded
+                              ? 'encoded ${_capturedData[step.key]!.bits} bits'
+                              : 'raw ${_capturedData[step.key]!.rawData?.length ?? 0} values',
                           style: const TextStyle(
                               fontSize: 11,
                               color: AppColors.textSecondary),
@@ -438,16 +440,16 @@ class _LearnScreenState extends State<LearnScreen> {
       _lastCaptureSuccess = false;
     });
 
-    final encodedData = await bleService.captureIRButton(
-      timeout: const Duration(seconds: 15),
+    final irButton = await bleService.captureIRButton(
+      timeout: const Duration(seconds: 20),
     );
 
     if (!mounted) return;
 
-    if (encodedData != null && encodedData.isNotEmpty) {
+    if (irButton != null && irButton.isValid) {
       final key = _steps[_currentStep].key;
       setState(() {
-        _capturedData[key] = encodedData;
+        _capturedData[key] = irButton;
         _isCapturing = false;
         _lastCaptureSuccess = true;
         _captureError = null;
@@ -498,7 +500,18 @@ class _LearnScreenState extends State<LearnScreen> {
       brand: widget.brand,
       model: widget.model,
       buttons: _capturedData.map(
-        (key, value) => MapEntry(key, IRButton(name: key, encodedData: value)),
+        (key, value) => MapEntry(key, IRButton(
+          name:      key,
+          method:    value.method,
+          hexData:   value.hexData,
+          bits:      value.bits,
+          hdrMark:   value.hdrMark,
+          hdrSpace:  value.hdrSpace,
+          bitMark:   value.bitMark,
+          oneSpace:  value.oneSpace,
+          zeroSpace: value.zeroSpace,
+          rawData:   value.rawData,
+        )),
       ),
       createdAt: DateTime.now(),
     );
@@ -508,15 +521,13 @@ class _LearnScreenState extends State<LearnScreen> {
 
     // 2. Send profile JSON to ESP32 for NVS storage
     if (bleService.isConnected) {
-      final buttonsMap = _capturedData.map(
-        (key, value) => MapEntry(key, value),
-      );
+      // Build buttons map using IRButton's toJson() so encoded data is preserved
       final profileJson = json.encode({
         'id':      profile.id,
         'name':    profile.name,
         'brand':   profile.brand,
         'model':   profile.model ?? '',
-        'buttons': buttonsMap,
+        'buttons': _capturedData.map((key, btn) => MapEntry(key, btn.toJson())),
       });
 
       final saved = await bleService.saveProfileToDevice(profileJson);
