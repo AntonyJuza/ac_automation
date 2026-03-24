@@ -18,7 +18,6 @@ class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
 
   // Local AC state — will be wired to BLE status stream later
-  bool _isPowerOn = false;
   final double _currentTemp = 23.0;
   double _targetTemp = 22.0;
   String _mode = 'Cool';
@@ -51,9 +50,9 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeroSection(profile?.name ?? 'Living Room AC'),
+                  _buildHeroSection(profile?.name ?? 'Living Room AC', acProvider),
                   const SizedBox(height: 16),
-                  _buildPowerBanner(),
+                  _buildPowerBanner(acProvider, bleService),
                   const SizedBox(height: 16),
                   _buildTempRow(),
                   const SizedBox(height: 16),
@@ -160,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Hero Section ─────────────────────────────────────────────────────────
 
-  Widget _buildHeroSection(String deviceName) {
+  Widget _buildHeroSection(String deviceName, ACProvider acProvider) {
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -186,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Power Banner ─────────────────────────────────────────────────────────
 
-  Widget _buildPowerBanner() {
+  Widget _buildPowerBanner(ACProvider acProvider, BLEService bleService) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -198,17 +197,19 @@ class _HomeScreenState extends State<HomeScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
-            _isPowerOn ? 'AC IS ON' : 'AC IS OFF',
+            acProvider.isAcOn ? 'AC IS ON' : 'AC IS OFF',
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: _isPowerOn ? AppColors.statusGreen : AppColors.textSecondary,
+              color: acProvider.isAcOn ? AppColors.statusGreen : AppColors.textSecondary,
             ),
           ),
           CupertinoSwitch(
-            value: _isPowerOn,
+            value: acProvider.isAcOn,
             activeTrackColor: AppColors.primaryBrand,
-            onChanged: (val) => setState(() => _isPowerOn = val),
+            onChanged: (val) {
+              // The switch is a passive indicator since the ESP's radar controls it!
+            },
           ),
         ],
       ),

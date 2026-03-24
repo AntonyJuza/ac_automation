@@ -6,10 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ACProvider with ChangeNotifier {
   List<ACProfile> _profiles = [];
   bool _isPresenceDetected = false;
+  bool _isAcOn = false;
   bool _isConnected = false;
 
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
+  bool get isAcOn => _isAcOn;
   bool get isConnected => _isConnected;
 
   ACProvider() {
@@ -75,7 +77,10 @@ class ACProvider with ChangeNotifier {
           _isPresenceDetected = isDetected;
         }
       }
-      // You can also handle AC=ON/OFF here if needed
+      if (part.startsWith('AC=')) {
+        final isOn = part.split('=')[1] == 'ON';
+        if (_isAcOn != isOn) _isAcOn = isOn;
+      }
     }
     notifyListeners();
   }
