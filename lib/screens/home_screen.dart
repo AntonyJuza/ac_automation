@@ -19,7 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Local AC state — will be wired to BLE status stream later
   bool _isPowerOn = false;
-  double _currentTemp = 23.0;
+  final double _currentTemp = 23.0;
   double _targetTemp = 22.0;
   String _mode = 'Cool';
   String _fanSpeed = 'Med';
