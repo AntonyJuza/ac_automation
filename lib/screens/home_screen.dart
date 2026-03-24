@@ -247,8 +247,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       constraints: const BoxConstraints(),
                     ),
                     Switch(
-                      value: true,
-                      onChanged: (val) {},
+                      value: provider.isAcOn,
+                      onChanged: (val) {
+                        // User can manually toggle if we wanted, but ESP32 automation mostly controls it!
+                      },
                       activeThumbColor: AppColors.primaryBrand,
                     ),
                   ],

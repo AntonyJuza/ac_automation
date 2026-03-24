@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 import 'package:ac_automation/models/ir_button.dart';
+import 'package:ac_automation/models/dynamic_config.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
-import 'dart:convert';
 
 // Each button step definition
 class _ButtonStep {
@@ -519,24 +519,38 @@ class _LearnScreenState extends State<LearnScreen> {
     // 1. Save locally on phone
     await acProvider.addProfile(profile);
 
-    // 2. Send profile JSON to ESP32 for NVS storage
+    // 2. Send profile via Dynamic Config Flow
     if (bleService.isConnected) {
-      // Build buttons map using IRButton's toJson() so encoded data is preserved
-      final profileJson = json.encode({
-        'id':      profile.id,
-        'name':    profile.name,
-        'brand':   profile.brand,
-        'model':   profile.model ?? '',
-        'buttons': _capturedData.map((key, btn) => MapEntry(key, btn.toJson())),
-      });
+      final powerOnBtn = _capturedData['power_on'];
+      final powerOffBtn = _capturedData['power_off'];
 
-      final saved = await bleService.saveProfileToDevice(profileJson);
-      if (saved) {
-        // 3. Tell ESP32 to use this profile for automation
-        await bleService.setActiveProfile(profile.id);
-        debugPrint('[App] Profile saved to ESP32 and set as active');
+      if (powerOnBtn != null && powerOffBtn != null) {
+        final config = DynamicConfig(
+          acOnData: powerOnBtn.hexData ?? [],
+          acOffData: powerOffBtn.hexData ?? [],
+          irFreqKhz: 38, // Default standard frequency
+          hdrMark: powerOnBtn.hdrMark ?? 3200,
+          hdrSpace: powerOnBtn.hdrSpace ?? 3150,
+          bitMark: powerOnBtn.bitMark ?? 400,
+          oneSpace: powerOnBtn.oneSpace ?? 1150,
+          zeroSpace: powerOnBtn.zeroSpace ?? 400,
+          stopMark: powerOnBtn.bitMark ?? 400,
+          bitLength: powerOnBtn.bits ?? 96,
+          sendRepeat: 0,
+        );
+
+        final saved = await bleService.sendDynamicConfig(config, name: profile.name);
+        
+        if (saved) {
+          debugPrint('[App] Dynamic Config saved to ESP32');
+          
+          // Also save the regular JSON profile as backup/legacy if needed, but not required
+          // We won't call saveProfileToDevice here since ESP32 will use dyn_config.
+        } else {
+          debugPrint('[App] Warning: Dynamic Config ESP32 send failed');
+        }
       } else {
-        debugPrint('[App] Warning: Profile saved locally but ESP32 send failed');
+        debugPrint('[App] Missing power_on or power_off data for Dynamic Config');
       }
     } else {
       debugPrint('[App] Not connected — profile saved locally only');
