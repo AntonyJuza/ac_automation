@@ -38,7 +38,7 @@ class BLEService extends ChangeNotifier {
   bool _encReceiving = false;
 
   BLEState          get state           => _state;
-  bool              get isConnected     => _state == BLEState.connected;
+  bool              get isConnected     => _device != null && _device!.isConnected;
   bool              get isScanning      => _state == BLEState.scanning;
   BluetoothDevice?  get device          => _device;
   List<ScanResult>  get scanResults     => List.unmodifiable(_scanResults);
