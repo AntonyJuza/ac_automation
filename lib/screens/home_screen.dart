@@ -23,6 +23,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String _mode = 'Cool';
   String _fanSpeed = 'Med';
 
+  // Timing controls (in minutes for UI, sent as ms)
+  double _onDelayMin = 1.0;
+  double _offDelayMin = 5.0;
+
   @override
   void initState() {
     super.initState();
@@ -50,26 +54,49 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeroSection(profile?.name ?? 'Living Room AC', acProvider),
+                  _buildHeroSection(
+                    acProvider.configName.isNotEmpty 
+                        ? acProvider.configName 
+                        : (profile?.name ?? 'Living Room AC'),
+                    acProvider,
+                  ),
                   const SizedBox(height: 16),
                   _buildPowerBanner(acProvider, bleService),
+                  const SizedBox(height: 16),
+                  _buildTimingSection(bleService),
                   const SizedBox(height: 16),
                   _buildTempRow(),
                   const SizedBox(height: 16),
                   _buildQuickSettingsRow(),
                   const SizedBox(height: 24),
-                  Center(
-                    child: TextButton(
-                      onPressed: () => _showScanSheet(context, bleService),
-                      child: const Text(
-                        'Manage Devices',
-                        style: TextStyle(
-                          color: AppColors.primaryBrand,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _showAddACDialog(context, bleService),
+                        icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryBrand, size: 18),
+                        label: const Text(
+                          'Add New AC',
+                          style: TextStyle(
+                            color: AppColors.primaryBrand,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    ),
+                      TextButton.icon(
+                        onPressed: () => _showScanSheet(context, bleService),
+                        icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand, size: 18),
+                        label: const Text(
+                          'Manage Devices',
+                          style: TextStyle(
+                            color: AppColors.primaryBrand,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -160,6 +187,38 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Hero Section ─────────────────────────────────────────────────────────
 
   Widget _buildHeroSection(String deviceName, ACProvider acProvider) {
+    String badgeText;
+    Color badgeColor;
+    IconData badgeIcon;
+
+    switch (acProvider.presenceStatus) {
+      case 'MOVING':
+        badgeText = 'Moving Target';
+        badgeColor = AppColors.statusGreen;
+        badgeIcon = Icons.directions_walk;
+        break;
+      case 'STATIC':
+        badgeText = 'Static Target';
+        badgeColor = AppColors.primaryBrand;
+        badgeIcon = Icons.person;
+        break;
+      case 'BOTH':
+        badgeText = 'Moving & Static';
+        badgeColor = AppColors.primaryBrand;
+        badgeIcon = Icons.group;
+        break;
+      case 'YES':
+        badgeText = 'Person Detected';
+        badgeColor = AppColors.statusGreen;
+        badgeIcon = Icons.person;
+        break;
+      default:
+        badgeText = 'No Presence';
+        badgeColor = AppColors.textSecondary;
+        badgeIcon = Icons.person_outline;
+        break;
+    }
+
     return Column(
       children: [
         const SizedBox(height: 12),
@@ -174,6 +233,29 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: AppColors.textSecondary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(badgeIcon, size: 14, color: badgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      badgeText,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: badgeColor,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -210,6 +292,131 @@ class _HomeScreenState extends State<HomeScreen> {
             onChanged: (val) {
               // The switch is a passive indicator since the ESP's radar controls it!
             },
+          ),
+        ],
+      ),
+    );
+  }
+  // ── Timing Section ──────────────────────────────────────────────────────
+
+  Widget _buildTimingSection(BLEService bleService) {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Auto Timing',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const SizedBox(width: 70, child: Text('ON Delay', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+              Expanded(
+                child: Slider(
+                  value: _onDelayMin,
+                  min: 0.5, max: 30, divisions: 59,
+                  label: '${_onDelayMin.toStringAsFixed(1)} min',
+                  activeColor: AppColors.primaryBrand,
+                  onChanged: (v) => setState(() => _onDelayMin = v),
+                ),
+              ),
+              SizedBox(
+                width: 50,
+                child: Text(
+                  '${_onDelayMin.toStringAsFixed(1)}m',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          Row(
+            children: [
+              const SizedBox(width: 70, child: Text('OFF Delay', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+              Expanded(
+                child: Slider(
+                  value: _offDelayMin,
+                  min: 0.5, max: 30, divisions: 59,
+                  label: '${_offDelayMin.toStringAsFixed(1)} min',
+                  activeColor: AppColors.statusRed,
+                  onChanged: (v) => setState(() => _offDelayMin = v),
+                ),
+              ),
+              SizedBox(
+                width: 50,
+                child: Text(
+                  '${_offDelayMin.toStringAsFixed(1)}m',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                final onMs = (_onDelayMin * 60000).round();
+                final offMs = (_offDelayMin * 60000).round();
+                bleService.setTiming(onMs, offMs);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Timing set: ON after ${_onDelayMin.toStringAsFixed(1)} min, OFF after ${_offDelayMin.toStringAsFixed(1)} min'),
+                    backgroundColor: AppColors.statusGreen,
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBrand,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: const Text('Save Timing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Add New AC Dialog ───────────────────────────────────────────────────
+
+  void _showAddACDialog(BuildContext context, BLEService bleService) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add New AC'),
+        content: const Text(
+          'This will clear the existing AC configuration on the device and start fresh. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final acProvider = Provider.of<ACProvider>(context, listen: false);
+              final router = GoRouter.of(context);
+              if (bleService.isConnected) {
+                await bleService.clearDeviceConfig();
+              }
+              // Also clear local profiles
+              final profiles = List.of(acProvider.profiles);
+              for (final p in profiles) {
+                await acProvider.deleteProfile(p.id);
+              }
+              if (mounted) {
+                router.push('/setup');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBrand),
+            child: const Text('Clear & Continue', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),

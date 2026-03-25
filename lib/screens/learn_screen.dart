@@ -7,7 +7,7 @@ import 'package:ac_automation/services/ble_service.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
-import 'dart:convert';
+import 'package:ac_automation/models/dynamic_config.dart';
 
 // Each button step definition
 class _ButtonStep {
@@ -493,9 +493,10 @@ class _LearnScreenState extends State<LearnScreen> {
   void _saveProfile() async {
     final bleService = Provider.of<BLEService>(context, listen: false);
     final acProvider = Provider.of<ACProvider>(context, listen: false);
+    final router = GoRouter.of(context);
 
     final profile = ACProfile(
-      id: Uuid().v4(),
+      id: const Uuid().v4(),
       name: widget.name,
       brand: widget.brand,
       model: widget.model,
@@ -519,29 +520,42 @@ class _LearnScreenState extends State<LearnScreen> {
     // 1. Save locally on phone
     await acProvider.addProfile(profile);
 
-    // 2. Send profile JSON to ESP32 for NVS storage
+    // 2. Upload to ESP32 via Dynamic Config (VAR_START/VAR_CHUNK/VAR_END)
     if (bleService.isConnected) {
-      // Build buttons map using IRButton's toJson() so encoded data is preserved
-      final profileJson = json.encode({
-        'id':      profile.id,
-        'name':    profile.name,
-        'brand':   profile.brand,
-        'model':   profile.model ?? '',
-        'buttons': _capturedData.map((key, btn) => MapEntry(key, btn.toJson())),
-      });
+      // Extract timing from the power_on button (the primary reference)
+      final powerOn  = _capturedData['power_on'];
+      final powerOff = _capturedData['power_off'];
 
-      final saved = await bleService.saveProfileToDevice(profileJson);
-      if (saved) {
-        // 3. Tell ESP32 to use this profile for automation
-        await bleService.setActiveProfile(profile.id);
-        debugPrint('[App] Profile saved to ESP32 and set as active');
+      if (powerOn != null && powerOn.isEncoded) {
+        final configName = '${widget.brand}_${widget.model ?? "AC"}';
+
+        final config = DynamicConfig(
+          acOnData:   powerOn.hexData ?? [],
+          acOffData:  powerOff?.hexData ?? powerOn.hexData ?? [],
+          irFreqKhz:  38,
+          hdrMark:    powerOn.hdrMark ?? 0,
+          hdrSpace:   powerOn.hdrSpace ?? 0,
+          bitMark:    powerOn.bitMark ?? 0,
+          oneSpace:   powerOn.oneSpace ?? 0,
+          zeroSpace:  powerOn.zeroSpace ?? 0,
+          stopMark:   powerOn.bitMark ?? 0,
+          bitLength:  powerOn.bits ?? 0,
+          sendRepeat: 3,
+        );
+
+        final saved = await bleService.sendDynamicConfig(config, name: configName);
+        if (saved) {
+          debugPrint('[App] Dynamic config "$configName" uploaded to ESP32');
+        } else {
+          debugPrint('[App] Warning: Dynamic config upload failed');
+        }
       } else {
-        debugPrint('[App] Warning: Profile saved locally but ESP32 send failed');
+        debugPrint('[App] power_on button is raw — Dynamic Config not sent');
       }
     } else {
       debugPrint('[App] Not connected — profile saved locally only');
     }
 
-    if (mounted) context.go('/');
+    if (mounted) router.go('/');
   }
 }

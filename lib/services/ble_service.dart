@@ -386,6 +386,15 @@ class BLEService extends ChangeNotifier {
   Future<bool> deleteProfileOnDevice(String profileId) =>
       sendCommand('DELETE:$profileId');
 
+  Future<bool> clearDeviceConfig() =>
+      sendCommand('CLEAR_CONFIG');
+
+  Future<bool> setTiming(int onMs, int offMs) =>
+      sendCommand('SET_TIMING:$onMs:$offMs');
+
+  Future<bool> getTiming() =>
+      sendCommand('GET_TIMING');
+
   // ---------- Capture one IR button ----------
 
   Future<IRButton?> captureIRButton({
