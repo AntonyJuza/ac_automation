@@ -17,12 +17,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
 
-  // Local AC state — will be wired to BLE status stream later
-  final double _currentTemp = 23.0;
-  double _targetTemp = 22.0;
-  String _mode = 'Cool';
-  String _fanSpeed = 'Med';
-
   // Timing controls (in minutes for UI, sent as ms)
   double _onDelayMin = 1.0;
   double _offDelayMin = 5.0;
@@ -64,10 +58,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildPowerBanner(acProvider, bleService),
                   const SizedBox(height: 16),
                   _buildTimingSection(bleService),
-                  const SizedBox(height: 16),
-                  _buildTempRow(),
-                  const SizedBox(height: 16),
-                  _buildQuickSettingsRow(),
                   const SizedBox(height: 24),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -423,230 +413,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // ── Temperature Row ───────────────────────────────────────────────────────
-
-  Widget _buildTempRow() {
-    return Row(
-      children: [
-        Expanded(child: _buildCurrentTempCard()),
-        const SizedBox(width: 12),
-        Expanded(child: _buildTargetTempCard()),
-      ],
-    );
-  }
-
-  Widget _buildCurrentTempCard() {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Current Temperature',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${_currentTemp.toInt()}°C',
-            style: const TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTargetTempCard() {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Set Temperature',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${_targetTemp.toInt()}°C',
-            style: const TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const Divider(height: 20, color: Color(0xFFE2E8F0)),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _tempAdjustBtn(
-                icon: Icons.remove,
-                onTap: () => setState(() {
-                  if (_targetTemp > 16) _targetTemp--;
-                }),
-              ),
-              _tempAdjustBtn(
-                icon: Icons.add,
-                onTap: () => setState(() {
-                  if (_targetTemp < 30) _targetTemp++;
-                }),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tempAdjustBtn({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: AppColors.secondaryBackground,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Icon(icon, size: 18, color: AppColors.primaryBrand),
-      ),
-    );
-  }
-
-  // ── Quick Settings Row ────────────────────────────────────────────────────
-
-  Widget _buildQuickSettingsRow() {
-    return Row(
-      children: [
-        Expanded(child: _buildModeCard()),
-        const SizedBox(width: 12),
-        Expanded(child: _buildFanCard()),
-      ],
-    );
-  }
-
-  Widget _buildModeCard() {
-    const modes = [
-      ('Cool', Icons.ac_unit),
-      ('Sleep', Icons.bedtime_outlined),
-      ('Fan', Icons.air),
-    ];
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Mode',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: modes.map((m) {
-              final active = _mode == m.$1;
-              return GestureDetector(
-                onTap: () => setState(() => _mode = m.$1),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? AppColors.primaryBrand
-                            : const Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        m.$2,
-                        size: 20,
-                        color: active ? Colors.white : AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      m.$1,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: active
-                            ? AppColors.primaryBrand
-                            : AppColors.textSecondary,
-                        fontWeight:
-                            active ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFanCard() {
-    const speeds = [
-      ('Low', 1),
-      ('Med', 2),
-      ('High', 3),
-    ];
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Fan Speed',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: speeds.map((s) {
-              final active = _fanSpeed == s.$1;
-              return GestureDetector(
-                onTap: () => setState(() => _fanSpeed = s.$1),
-                child: Column(
-                  children: [
-                    _FanBarsIcon(bars: s.$2, active: active),
-                    const SizedBox(height: 4),
-                    Text(
-                      s.$1,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: active
-                            ? AppColors.primaryBrand
-                            : AppColors.textSecondary,
-                        fontWeight:
-                            active ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ── Connect Prompt ────────────────────────────────────────────────────────
 
@@ -726,6 +492,13 @@ class _HomeScreenState extends State<HomeScreen> {
               return GestureDetector(
                 onTap: () {
                   setState(() => _navIndex = i);
+                  if (i == 1) {
+                    final acProvider = Provider.of<ACProvider>(context, listen: false);
+                    final profile = acProvider.profiles.isNotEmpty ? acProvider.profiles.first : null;
+                    if (profile != null) {
+                      context.push('/control', extra: profile);
+                    }
+                  }
                   if (i == 3) context.push('/setup');
                 },
                 child: Column(
@@ -848,40 +621,6 @@ class _ACLinePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// ── Fan Bars Icon ─────────────────────────────────────────────────────────────
-
-class _FanBarsIcon extends StatelessWidget {
-  final int bars;
-  final bool active;
-  const _FanBarsIcon({required this.bars, required this.active});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(3, (i) {
-          final filled = i < bars;
-          final heights = [12.0, 20.0, 28.0];
-          return Container(
-            width: 6,
-            height: heights[i],
-            margin: const EdgeInsets.symmetric(horizontal: 1.5),
-            decoration: BoxDecoration(
-              color: filled
-                  ? (active ? AppColors.primaryBrand : AppColors.textSecondary)
-                  : const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
 
 // ── Scan Bottom Sheet ─────────────────────────────────────────────────────────
 
