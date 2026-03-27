@@ -100,13 +100,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   PreferredSizeWidget _buildAppBar(BLEService bleService) {
     return AppBar(
-      backgroundColor: AppColors.primaryBackground,
-      elevation: 0,
-      centerTitle: true,
-      leading: IconButton(
-        icon: const Icon(Icons.menu, color: AppColors.textPrimary),
-        onPressed: () {},
-      ),
+      // backgroundColor: AppColors.primaryBackground,
+      // elevation: 0,
+      // centerTitle: true,
+      // leading: IconButton(
+      //   icon: const Icon(Icons.menu, color: AppColors.textPrimary),
+      //   onPressed: () {},
+      // ),
       title: const Text(
         'AC Control',
         style: TextStyle(
@@ -152,24 +152,24 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         // Avatar
-        Padding(
-          padding: const EdgeInsets.only(right: 12),
-          child: GestureDetector(
-            onTap: () {},
-            child: CircleAvatar(
-              radius: 17,
-              backgroundColor: AppColors.textPrimary,
-              child: const Text(
-                'SJ',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
-        ),
+        // Padding(
+        //   padding: const EdgeInsets.only(right: 12),
+        //   child: GestureDetector(
+        //     onTap: () {},
+        //     child: CircleAvatar(
+        //       radius: 17,
+        //       backgroundColor: AppColors.textPrimary,
+        //       child: const Text(
+        //         'SJ',
+        //         style: TextStyle(
+        //           color: Colors.white,
+        //           fontSize: 11,
+        //           fontWeight: FontWeight.bold,
+        //         ),
+        //       ),
+        //     ),
+        //   ),
+        // ),
       ],
     );
   }

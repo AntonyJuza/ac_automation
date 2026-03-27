@@ -27,10 +27,10 @@ class _ButtonStep {
 const List<_ButtonStep> _steps = [
   _ButtonStep(key: 'power_off',  label: 'Power OFF',   icon: Icons.power_settings_new),
   _ButtonStep(key: 'power_on',   label: 'Power ON',    icon: Icons.power_settings_new),
-  _ButtonStep(key: 'temp_up',    label: 'Temp +',      icon: Icons.add_circle_outline),
-  _ButtonStep(key: 'temp_down',  label: 'Temp −',      icon: Icons.remove_circle_outline),
-  _ButtonStep(key: 'mode',       label: 'Mode',        icon: Icons.ac_unit),
-  _ButtonStep(key: 'fan_speed',  label: 'Fan Speed',   icon: Icons.air),
+  _ButtonStep(key: 'temp_up',    label: 'Temp +',      icon: Icons.add_circle_outline, optional: true),
+  _ButtonStep(key: 'temp_down',  label: 'Temp −',      icon: Icons.remove_circle_outline, optional: true),
+  _ButtonStep(key: 'mode',       label: 'Mode',        icon: Icons.ac_unit, optional: true),
+  _ButtonStep(key: 'fan_speed',  label: 'Fan Speed',   icon: Icons.air, optional: true),
   _ButtonStep(key: 'swing',      label: 'Swing',       icon: Icons.swap_vert,    optional: true),
   _ButtonStep(key: 'sleep',      label: 'Sleep',       icon: Icons.nightlight_round, optional: true),
 ];
