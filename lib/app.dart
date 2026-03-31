@@ -10,17 +10,22 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
+import 'package:ac_automation/services/fake_ble_service.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 
 class ACAutomationApp extends StatelessWidget {
-  const ACAutomationApp({super.key});
+  final bool useFakeBLE;
+  const ACAutomationApp({super.key, this.useFakeBLE = false});
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ACProvider()),
-        ChangeNotifierProvider(create: (_) => BLEService()),
+        if (useFakeBLE)
+          ChangeNotifierProvider<BLEService>(create: (_) => FakeBLEService())
+        else
+          ChangeNotifierProvider(create: (_) => BLEService()),
       ],
       child: Builder(
         builder: (context) {

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ac_automation/utils/constants.dart';
 
 class ACButton extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? child;
   final String? label;
   final bool isActive;
   final VoidCallback onTap;
@@ -11,13 +12,14 @@ class ACButton extends StatelessWidget {
 
   const ACButton({
     super.key,
-    required this.icon,
+    this.icon,
+    this.child,
     this.label,
     this.isActive = false,
     required this.onTap,
     this.isCircular = false,
     this.activeColor,
-  });
+  }) : assert(icon != null || child != null, 'Provide icon or child');
 
   @override
   Widget build(BuildContext context) {
@@ -31,18 +33,20 @@ class ACButton extends StatelessWidget {
             width: isCircular ? 64 : 80,
             height: 64,
             decoration: BoxDecoration(
-              color: isActive 
-                  ? (activeColor ?? AppColors.primaryBrand) 
+              color: isActive
+                  ? (activeColor ?? AppColors.primaryBrand)
                   : AppColors.primaryBackground,
               shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
               borderRadius: isCircular ? null : BorderRadius.circular(AppStyles.borderRadius),
               boxShadow: [AppStyles.softShadow],
             ),
-            child: Icon(
-              icon,
-              color: isActive ? Colors.white : AppColors.textSecondary,
-              size: 28,
-            ),
+            child: child != null
+                ? Center(child: child)
+                : Icon(
+                    icon,
+                    color: isActive ? Colors.white : AppColors.textSecondary,
+                    size: 28,
+                  ),
           ),
         ),
         if (label != null) ...[

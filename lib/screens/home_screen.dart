@@ -6,24 +6,16 @@ import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/widgets/ble_device_tile.dart';
+import 'package:ac_automation/widgets/ac_icons.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
-
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
-
-  // Local AC state — will be wired to BLE status stream later
-  final double _currentTemp = 23.0;
-  double _targetTemp = 22.0;
-  String _mode = 'Cool';
-  String _fanSpeed = 'Med';
-
-  // Timing controls (in minutes for UI, sent as ms)
   double _onDelayMin = 1.0;
   double _offDelayMin = 5.0;
 
@@ -31,665 +23,222 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final bleService = Provider.of<BLEService>(context, listen: false);
-      final acProvider = Provider.of<ACProvider>(context, listen: false);
-      bleService.statusStream.listen((msg) {
-        if (mounted) acProvider.updateFromStatus(msg);
-      });
+      final ble = Provider.of<BLEService>(context, listen: false);
+      final ac = Provider.of<ACProvider>(context, listen: false);
+      ble.statusStream.listen((msg) { if (mounted) ac.updateFromStatus(msg); });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final bleService = Provider.of<BLEService>(context);
-    final acProvider = Provider.of<ACProvider>(context);
-    final profile = acProvider.profiles.isNotEmpty ? acProvider.profiles.first : null;
-
+    final ble = Provider.of<BLEService>(context);
+    final ac = Provider.of<ACProvider>(context);
+    final profile = ac.profiles.isNotEmpty ? ac.profiles.first : null;
     return Scaffold(
       backgroundColor: AppColors.secondaryBackground,
-      appBar: _buildAppBar(bleService),
-      body: bleService.isConnected
+      appBar: _buildAppBar(ble),
+      body: ble.isConnected
           ? SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeroSection(
-                    acProvider.configName.isNotEmpty 
-                        ? acProvider.configName 
-                        : (profile?.name ?? 'Living Room AC'),
-                    acProvider,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                _buildHeroSection(
+                  ac.configName.isNotEmpty ? ac.configName : (profile?.name ?? 'Living Room AC'),
+                  ac,
+                ),
+                const SizedBox(height: 16),
+                _buildTimingSection(ble),
+                const SizedBox(height: 24),
+                Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+                  TextButton.icon(
+                    onPressed: () => _showAddACDialog(context, ble),
+                    icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryBrand, size: 18),
+                    label: const Text('Add New AC', style: TextStyle(color: AppColors.primaryBrand, fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
-                  const SizedBox(height: 16),
-                  _buildPowerBanner(acProvider, bleService),
-                  const SizedBox(height: 16),
-                  _buildTimingSection(bleService),
-                  const SizedBox(height: 16),
-                  _buildTempRow(),
-                  const SizedBox(height: 16),
-                  _buildQuickSettingsRow(),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => _showAddACDialog(context, bleService),
-                        icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryBrand, size: 18),
-                        label: const Text(
-                          'Add New AC',
-                          style: TextStyle(
-                            color: AppColors.primaryBrand,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _showScanSheet(context, bleService),
-                        icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand, size: 18),
-                        label: const Text(
-                          'Manage Devices',
-                          style: TextStyle(
-                            color: AppColors.primaryBrand,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
+                  TextButton.icon(
+                    onPressed: () => _showScanSheet(context, ble),
+                    icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand, size: 18),
+                    label: const Text('Manage Devices', style: TextStyle(color: AppColors.primaryBrand, fontWeight: FontWeight.w600, fontSize: 14)),
                   ),
-                ],
-              ),
+                ]),
+              ]),
             )
-          : _buildConnectPrompt(context, bleService),
+          : _buildConnectPrompt(context, ble),
       bottomNavigationBar: _buildBottomNav(),
     );
   }
 
-  // ── App Bar ──────────────────────────────────────────────────────────────
+  // ── App Bar ───────────────────────────────────────────────────────────────
 
-  PreferredSizeWidget _buildAppBar(BLEService bleService) {
+  PreferredSizeWidget _buildAppBar(BLEService ble) {
     return AppBar(
       backgroundColor: AppColors.primaryBackground,
       elevation: 0,
       centerTitle: true,
-      leading: IconButton(
-        icon: const Icon(Icons.menu, color: AppColors.textPrimary),
-        onPressed: () {},
-      ),
-      title: const Text(
-        'AC Control',
-        style: TextStyle(
-          color: AppColors.textPrimary,
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
+      leading: IconButton(icon: const Icon(Icons.menu, color: AppColors.textPrimary), onPressed: () {}),
+      title: const Text('AC Control', style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.w600)),
       actions: [
-        // Connection status
-        if (bleService.isConnected)
+        if (ble.isConnected)
           Padding(
             padding: const EdgeInsets.only(right: 4),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: const BoxDecoration(
-                        color: AppColors.statusGreen,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(Icons.bluetooth,
-                        size: 16, color: AppColors.textSecondary),
-                  ],
-                ),
-                const Text(
-                  'CONNECTED',
-                  style: TextStyle(
-                    fontSize: 8,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Container(width: 7, height: 7, decoration: const BoxDecoration(color: AppColors.statusGreen, shape: BoxShape.circle)),
+                const SizedBox(width: 4),
+                const Icon(Icons.bluetooth, size: 16, color: AppColors.textSecondary),
+              ]),
+              const Text('CONNECTED', style: TextStyle(fontSize: 8, color: AppColors.textSecondary, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+            ]),
           ),
-        // Avatar
         Padding(
           padding: const EdgeInsets.only(right: 12),
           child: GestureDetector(
             onTap: () {},
-            child: CircleAvatar(
-              radius: 17,
-              backgroundColor: AppColors.textPrimary,
-              child: const Text(
-                'SJ',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            child: const CircleAvatar(radius: 17, backgroundColor: AppColors.textPrimary,
+              child: Text('SJ', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold))),
           ),
         ),
       ],
     );
   }
 
-  // ── Hero Section ─────────────────────────────────────────────────────────
+  // ── Hero Section ──────────────────────────────────────────────────────────
 
-  Widget _buildHeroSection(String deviceName, ACProvider acProvider) {
-    String badgeText;
-    Color badgeColor;
-    IconData badgeIcon;
-
-    switch (acProvider.presenceStatus) {
-      case 'MOVING':
-        badgeText = 'Moving Target';
-        badgeColor = AppColors.statusGreen;
-        badgeIcon = Icons.directions_walk;
-        break;
-      case 'STATIC':
-        badgeText = 'Static Target';
-        badgeColor = AppColors.primaryBrand;
-        badgeIcon = Icons.person;
-        break;
-      case 'BOTH':
-        badgeText = 'Moving & Static';
-        badgeColor = AppColors.primaryBrand;
-        badgeIcon = Icons.group;
-        break;
-      case 'YES':
-        badgeText = 'Person Detected';
-        badgeColor = AppColors.statusGreen;
-        badgeIcon = Icons.person;
-        break;
-      default:
-        badgeText = 'No Presence';
-        badgeColor = AppColors.textSecondary;
-        badgeIcon = Icons.person_outline;
-        break;
+  Widget _buildHeroSection(String deviceName, ACProvider ac) {
+    String badgeText; Color badgeColor; IconData badgeIcon;
+    switch (ac.presenceStatus) {
+      case 'MOVING': badgeText = 'Moving Target'; badgeColor = AppColors.statusGreen; badgeIcon = Icons.directions_walk; break;
+      case 'STATIC': badgeText = 'Static Target'; badgeColor = AppColors.primaryBrand; badgeIcon = Icons.person; break;
+      case 'BOTH':   badgeText = 'Moving & Static'; badgeColor = AppColors.primaryBrand; badgeIcon = Icons.group; break;
+      case 'YES':    badgeText = 'Person Detected'; badgeColor = AppColors.statusGreen; badgeIcon = Icons.person; break;
+      default:       badgeText = 'No Presence'; badgeColor = AppColors.textSecondary; badgeIcon = Icons.person_outline;
     }
-
-    return Column(
-      children: [
-        const SizedBox(height: 12),
-        Center(
-          child: Column(
-            children: [
-              _ACUnitIcon(),
-              const SizedBox(height: 10),
-              Text(
-                deviceName,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: badgeColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(badgeIcon, size: 14, color: badgeColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      badgeText,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: badgeColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Power Banner ─────────────────────────────────────────────────────────
-
-  Widget _buildPowerBanner(ACProvider acProvider, BLEService bleService) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 28),
       decoration: BoxDecoration(
         color: AppColors.primaryBackground,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: [AppStyles.softShadow],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            acProvider.isAcOn ? 'AC IS ON' : 'AC IS OFF',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: acProvider.isAcOn ? AppColors.statusGreen : AppColors.textSecondary,
-            ),
-          ),
-          CupertinoSwitch(
-            value: acProvider.isAcOn,
-            activeTrackColor: AppColors.primaryBrand,
-            onChanged: (val) {
-              // The switch is a passive indicator since the ESP's radar controls it!
-            },
-          ),
-        ],
-      ),
-    );
-  }
-  // ── Timing Section ──────────────────────────────────────────────────────
-
-  Widget _buildTimingSection(BLEService bleService) {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Auto Timing',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              const SizedBox(width: 70, child: Text('ON Delay', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
-              Expanded(
-                child: Slider(
-                  value: _onDelayMin,
-                  min: 0.5, max: 30, divisions: 59,
-                  label: '${_onDelayMin.toStringAsFixed(1)} min',
-                  activeColor: AppColors.primaryBrand,
-                  onChanged: (v) => setState(() => _onDelayMin = v),
-                ),
-              ),
-              SizedBox(
-                width: 50,
-                child: Text(
-                  '${_onDelayMin.toStringAsFixed(1)}m',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              const SizedBox(width: 70, child: Text('OFF Delay', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
-              Expanded(
-                child: Slider(
-                  value: _offDelayMin,
-                  min: 0.5, max: 30, divisions: 59,
-                  label: '${_offDelayMin.toStringAsFixed(1)} min',
-                  activeColor: AppColors.statusRed,
-                  onChanged: (v) => setState(() => _offDelayMin = v),
-                ),
-              ),
-              SizedBox(
-                width: 50,
-                child: Text(
-                  '${_offDelayMin.toStringAsFixed(1)}m',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                ),
-              ),
-            ],
-          ),
+      child: Stack(alignment: Alignment.center, children: [
+        // Diffuse glow blobs
+        Positioned(top: 0, left: 30,
+          child: _GlowBlob(color: AppColors.primaryBrand.withValues(alpha: 0.10), size: 100)),
+        Positioned(top: 8, right: 30,
+          child: _GlowBlob(color: AppColors.secondaryAccent.withValues(alpha: 0.09), size: 80)),
+        // Content
+        Column(children: [
+          AcActiveCoolIcon(size: 180, color: AppColors.textPrimary.withValues(alpha: 0.82)),
+          const SizedBox(height: 10),
+          Text(deviceName, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14, fontWeight: FontWeight.w500)),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                final onMs = (_onDelayMin * 60000).round();
-                final offMs = (_offDelayMin * 60000).round();
-                bleService.setTiming(onMs, offMs);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Timing set: ON after ${_onDelayMin.toStringAsFixed(1)} min, OFF after ${_offDelayMin.toStringAsFixed(1)} min'),
-                    backgroundColor: AppColors.statusGreen,
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryBrand,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: const Text('Save Timing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
+          _PowerPill(isOn: ac.isAcOn),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: badgeColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(badgeIcon, size: 13, color: badgeColor),
+              const SizedBox(width: 4),
+              Text(badgeText, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: badgeColor)),
+            ]),
           ),
-        ],
-      ),
+        ]),
+      ]),
     );
   }
 
-  // ── Add New AC Dialog ───────────────────────────────────────────────────
+  // ── Timing Section ────────────────────────────────────────────────────────
 
-  void _showAddACDialog(BuildContext context, BLEService bleService) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add New AC'),
-        content: const Text(
-          'This will clear the existing AC configuration on the device and start fresh. Continue?',
+  Widget _buildTimingSection(BLEService ble) {
+    return _card(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Auto Timing', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+        const SizedBox(height: 12),
+        _GradientSliderRow(
+          label: 'ON Delay',
+          value: _onDelayMin,
+          gradientColors: const [AppColors.primaryBrand, AppColors.secondaryAccent],
+          onChanged: (v) => setState(() => _onDelayMin = v),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              final acProvider = Provider.of<ACProvider>(context, listen: false);
-              final router = GoRouter.of(context);
-              if (bleService.isConnected) {
-                await bleService.clearDeviceConfig();
-              }
-              // Also clear local profiles
-              final profiles = List.of(acProvider.profiles);
-              for (final p in profiles) {
-                await acProvider.deleteProfile(p.id);
-              }
-              if (mounted) {
-                router.push('/setup');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBrand),
-            child: const Text('Clear & Continue', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Temperature Row ───────────────────────────────────────────────────────
-
-  Widget _buildTempRow() {
-    return Row(
-      children: [
-        Expanded(child: _buildCurrentTempCard()),
-        const SizedBox(width: 12),
-        Expanded(child: _buildTargetTempCard()),
-      ],
-    );
-  }
-
-  Widget _buildCurrentTempCard() {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Current Temperature',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${_currentTemp.toInt()}°C',
-            style: const TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTargetTempCard() {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Set Temperature',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '${_targetTemp.toInt()}°C',
-            style: const TextStyle(
-              fontSize: 40,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const Divider(height: 20, color: Color(0xFFE2E8F0)),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _tempAdjustBtn(
-                icon: Icons.remove,
-                onTap: () => setState(() {
-                  if (_targetTemp > 16) _targetTemp--;
-                }),
-              ),
-              _tempAdjustBtn(
-                icon: Icons.add,
-                onTap: () => setState(() {
-                  if (_targetTemp < 30) _targetTemp++;
-                }),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tempAdjustBtn({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: AppColors.secondaryBackground,
-          borderRadius: BorderRadius.circular(8),
+        const SizedBox(height: 2),
+        _GradientSliderRow(
+          label: 'OFF Delay',
+          value: _offDelayMin,
+          gradientColors: const [Color(0xFFEF4444), Color(0xFFF97316)],
+          onChanged: (v) => setState(() => _offDelayMin = v),
         ),
-        child: Icon(icon, size: 18, color: AppColors.primaryBrand),
-      ),
-    );
-  }
-
-  // ── Quick Settings Row ────────────────────────────────────────────────────
-
-  Widget _buildQuickSettingsRow() {
-    return Row(
-      children: [
-        Expanded(child: _buildModeCard()),
-        const SizedBox(width: 12),
-        Expanded(child: _buildFanCard()),
-      ],
-    );
-  }
-
-  Widget _buildModeCard() {
-    const modes = [
-      ('Cool', Icons.ac_unit),
-      ('Sleep', Icons.bedtime_outlined),
-      ('Fan', Icons.air),
-    ];
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Mode',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () {
+              ble.setTiming((_onDelayMin * 60000).round(), (_offDelayMin * 60000).round());
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Timing set: ON ${_onDelayMin.toStringAsFixed(1)} min / OFF ${_offDelayMin.toStringAsFixed(1)} min'),
+                backgroundColor: AppColors.statusGreen,
+              ));
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBrand,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              elevation: 0,
             ),
+            child: const Text('Save Timing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: modes.map((m) {
-              final active = _mode == m.$1;
-              return GestureDetector(
-                onTap: () => setState(() => _mode = m.$1),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? AppColors.primaryBrand
-                            : const Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        m.$2,
-                        size: 20,
-                        color: active ? Colors.white : AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      m.$1,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: active
-                            ? AppColors.primaryBrand
-                            : AppColors.textSecondary,
-                        fontWeight:
-                            active ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFanCard() {
-    const speeds = [
-      ('Low', 1),
-      ('Med', 2),
-      ('High', 3),
-    ];
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Fan Speed',
-            style: TextStyle(
-              fontSize: 11,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: speeds.map((s) {
-              final active = _fanSpeed == s.$1;
-              return GestureDetector(
-                onTap: () => setState(() => _fanSpeed = s.$1),
-                child: Column(
-                  children: [
-                    _FanBarsIcon(bars: s.$2, active: active),
-                    const SizedBox(height: 4),
-                    Text(
-                      s.$1,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: active
-                            ? AppColors.primaryBrand
-                            : AppColors.textSecondary,
-                        fontWeight:
-                            active ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 
   // ── Connect Prompt ────────────────────────────────────────────────────────
 
-  Widget _buildConnectPrompt(BuildContext context, BLEService bleService) {
+  Widget _buildConnectPrompt(BuildContext context, BLEService ble) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.bluetooth_searching,
-            size: 80,
-            color: AppColors.primaryBrand.withValues(alpha: 0.35),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.bluetooth_searching, size: 80, color: AppColors.primaryBrand.withValues(alpha: 0.35)),
+        const SizedBox(height: 24),
+        const Text('No Device Connected', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+        const SizedBox(height: 10),
+        const Text('Connect to your AC Automation\ndevice to get started.',
+            textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary, fontSize: 15)),
+        const SizedBox(height: 32),
+        ElevatedButton.icon(
+          onPressed: () => _showScanSheet(context, ble),
+          icon: const Icon(Icons.bluetooth, color: Colors.white),
+          label: const Text('Scan for Devices', style: TextStyle(color: Colors.white, fontSize: 16)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryBrand,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
-          const SizedBox(height: 24),
-          const Text(
-            'No Device Connected',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Connect to your AC Automation\ndevice to get started.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: () => _showScanSheet(context, bleService),
-            icon: const Icon(Icons.bluetooth, color: Colors.white),
-            label: const Text(
-              'Scan for Devices',
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryBrand,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-            ),
+        ),
+      ]),
+    );
+  }
+
+  // ── Add New AC Dialog ─────────────────────────────────────────────────────
+
+  void _showAddACDialog(BuildContext context, BLEService ble) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add New AC'),
+        content: const Text('This will clear the existing AC configuration on the device and start fresh. Continue?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final ac = Provider.of<ACProvider>(context, listen: false);
+              final router = GoRouter.of(context);
+              if (ble.isConnected) await ble.clearDeviceConfig();
+              for (final p in List.of(ac.profiles)) await ac.deleteProfile(p.id);
+              if (mounted) router.push('/setup');
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryBrand),
+            child: const Text('Clear & Continue', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -708,13 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.primaryBackground,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -2),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 12, offset: const Offset(0, -2))],
       ),
       child: SafeArea(
         child: Padding(
@@ -724,34 +267,14 @@ class _HomeScreenState extends State<HomeScreen> {
             children: List.generate(items.length, (i) {
               final active = _navIndex == i;
               return GestureDetector(
-                onTap: () {
-                  setState(() => _navIndex = i);
-                  if (i == 3) context.push('/setup');
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      items[i].$1,
-                      size: 24,
-                      color: active
-                          ? AppColors.primaryBrand
-                          : AppColors.textSecondary,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      items[i].$2,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: active
-                            ? AppColors.primaryBrand
-                            : AppColors.textSecondary,
-                        fontWeight:
-                            active ? FontWeight.w600 : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
+                onTap: () { setState(() => _navIndex = i); if (i == 3) context.push('/setup'); },
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(items[i].$1, size: 24, color: active ? AppColors.primaryBrand : AppColors.textSecondary),
+                  const SizedBox(height: 3),
+                  Text(items[i].$2, style: TextStyle(fontSize: 11,
+                      color: active ? AppColors.primaryBrand : AppColors.textSecondary,
+                      fontWeight: active ? FontWeight.w600 : FontWeight.normal)),
+                ]),
               );
             }),
           ),
@@ -762,20 +285,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Scan Sheet ────────────────────────────────────────────────────────────
 
-  void _showScanSheet(BuildContext context, BLEService bleService) {
-    bleService.startScan();
+  void _showScanSheet(BuildContext context, BLEService ble) {
+    ble.startScan();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => ChangeNotifierProvider.value(
-        value: bleService,
-        child: const _ScanSheet(),
-      ),
-    ).then((_) => bleService.stopScan());
+      builder: (_) => ChangeNotifierProvider.value(value: ble, child: const _ScanSheet()),
+    ).then((_) => ble.stopScan());
   }
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
 
   Widget _card({required Widget child}) {
     return Container(
@@ -790,96 +308,102 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// ── AC Unit Line-Art Icon ─────────────────────────────────────────────────────
+// ── Glow Blob ─────────────────────────────────────────────────────────────────
 
-class _ACUnitIcon extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 100,
-      height: 56,
-      child: CustomPaint(painter: _ACLinePainter()),
-    );
-  }
-}
-
-class _ACLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.textPrimary.withValues(alpha: 0.55)
-      ..strokeWidth = 1.8
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-
-    final w = size.width;
-    final h = size.height;
-
-    // Body outline
-    final bodyRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(0, h * 0.15, w, h * 0.6),
-      const Radius.circular(8),
-    );
-    canvas.drawRRect(bodyRect, paint);
-
-    // Vent lines
-    for (int i = 0; i < 4; i++) {
-      final x = w * 0.18 + i * w * 0.18;
-      canvas.drawLine(
-        Offset(x, h * 0.35),
-        Offset(x, h * 0.6),
-        paint,
-      );
-    }
-
-    // Front panel divider
-    canvas.drawLine(
-      Offset(0, h * 0.38),
-      Offset(w, h * 0.38),
-      paint,
-    );
-
-    // Legs
-    canvas.drawLine(Offset(w * 0.25, h * 0.75), Offset(w * 0.25, h), paint);
-    canvas.drawLine(Offset(w * 0.75, h * 0.75), Offset(w * 0.75, h), paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-// ── Fan Bars Icon ─────────────────────────────────────────────────────────────
-
-class _FanBarsIcon extends StatelessWidget {
-  final int bars;
-  final bool active;
-  const _FanBarsIcon({required this.bars, required this.active});
+class _GlowBlob extends StatelessWidget {
+  final Color color;
+  final double size;
+  const _GlowBlob({required this.color, required this.size});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 40,
-      height: 40,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: List.generate(3, (i) {
-          final filled = i < bars;
-          final heights = [12.0, 20.0, 28.0];
-          return Container(
-            width: 6,
-            height: heights[i],
-            margin: const EdgeInsets.symmetric(horizontal: 1.5),
-            decoration: BoxDecoration(
-              color: filled
-                  ? (active ? AppColors.primaryBrand : AppColors.textSecondary)
-                  : const Color(0xFFE2E8F0),
-              borderRadius: BorderRadius.circular(3),
-            ),
-          );
-        }),
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: color, blurRadius: size * 0.8, spreadRadius: size * 0.2)],
       ),
     );
+  }
+}
+
+// ── Power Pill ────────────────────────────────────────────────────────────────
+
+class _PowerPill extends StatelessWidget {
+  final bool isOn;
+  const _PowerPill({required this.isOn});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isOn ? AppColors.statusGreen : AppColors.textSecondary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(isOn ? 'AC ON' : 'AC OFF',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color, letterSpacing: 0.4)),
+        const SizedBox(width: 8),
+        CupertinoSwitch(
+          value: isOn,
+          activeTrackColor: AppColors.primaryBrand,
+          onChanged: null, // passive indicator — ESP radar controls this
+        ),
+      ]),
+    );
+  }
+}
+
+// ── Gradient Slider Row ───────────────────────────────────────────────────────
+
+class _GradientSliderRow extends StatelessWidget {
+  final String label;
+  final double value;
+  final List<Color> gradientColors;
+  final ValueChanged<double> onChanged;
+
+  const _GradientSliderRow({
+    required this.label,
+    required this.value,
+    required this.gradientColors,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(children: [
+      SizedBox(width: 68, child: Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+      Expanded(
+        child: SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: gradientColors.first,
+            inactiveTrackColor: const Color(0xFFE2E8F0),
+            thumbColor: gradientColors.first,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+            trackShape: const RoundedRectSliderTrackShape(),
+          ),
+          child: Slider(
+            value: value,
+            min: 0.5, max: 30, divisions: 59,
+            label: '${value.toStringAsFixed(1)} min',
+            onChanged: onChanged,
+          ),
+        ),
+      ),
+      SizedBox(
+        width: 46,
+        child: Text('${value.toStringAsFixed(1)}m',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+      ),
+    ]);
   }
 }
 
@@ -890,93 +414,54 @@ class _ScanSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bleService = Provider.of<BLEService>(context);
-
+    final ble = Provider.of<BLEService>(context);
     return Container(
       height: MediaQuery.of(context).size.height * 0.6,
       decoration: const BoxDecoration(
         color: AppColors.secondaryBackground,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      child: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 12),
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.textSecondary.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2),
-            ),
+      child: Column(children: [
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          width: 40, height: 4,
+          decoration: BoxDecoration(
+            color: AppColors.textSecondary.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(2),
           ),
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Nearby Devices',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            const Text('Nearby Devices',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            if (ble.isScanning)
+              const SizedBox(width: 20, height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primaryBrand))
+            else
+              TextButton(onPressed: ble.startScan, child: const Text('Rescan')),
+          ]),
+        ),
+        Expanded(
+          child: ble.scanResults.isEmpty
+              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.bluetooth_searching, size: 48, color: AppColors.primaryBrand.withValues(alpha: 0.4)),
+                  const SizedBox(height: 16),
+                  Text(ble.isScanning ? 'Searching for devices...' : 'No devices found. Try rescanning.',
+                      style: const TextStyle(color: AppColors.textSecondary)),
+                ]))
+              : ListView.builder(
+                  itemCount: ble.scanResults.length,
+                  itemBuilder: (context, i) {
+                    final result = ble.scanResults[i];
+                    return BLEDeviceTile(
+                      result: result,
+                      onConnect: () { Navigator.of(context).pop(); ble.connectTo(result.device); },
+                    );
+                  },
                 ),
-                if (bleService.isScanning)
-                  const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primaryBrand,
-                    ),
-                  )
-                else
-                  TextButton(
-                    onPressed: bleService.startScan,
-                    child: const Text('Rescan'),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: bleService.scanResults.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.bluetooth_searching,
-                          size: 48,
-                          color: AppColors.primaryBrand.withValues(alpha: 0.4),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          bleService.isScanning
-                              ? 'Searching for devices...'
-                              : 'No devices found. Try rescanning.',
-                          style:
-                              const TextStyle(color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    itemCount: bleService.scanResults.length,
-                    itemBuilder: (context, index) {
-                      final result = bleService.scanResults[index];
-                      return BLEDeviceTile(
-                        result: result,
-                        onConnect: () {
-                          Navigator.of(context).pop();
-                          bleService.connectTo(result.device);
-                        },
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }

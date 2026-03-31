@@ -7,6 +7,7 @@ import 'package:ac_automation/models/ac_profile.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:provider/provider.dart';
+import 'package:ac_automation/widgets/ac_icons.dart';
 
 class ControlScreen extends StatefulWidget {
   final ACProfile profile;
@@ -113,13 +114,13 @@ class _ControlScreenState extends State<ControlScreen> {
                     },
                   ),
                   ACButton(
-                    icon: _getModeIcon(),
+                    child: _getModeWidget(),
                     label: _mode,
                     isActive: true,
                     onTap: _cycleMode,
                   ),
                   ACButton(
-                    icon: Icons.air,
+                    child: AcFanIcon(size: 32, color: Colors.white),
                     label: 'Fan: $_fanSpeed',
                     isActive: true,
                     onTap: _cycleFanSpeed,
@@ -144,11 +145,11 @@ class _ControlScreenState extends State<ControlScreen> {
                 mainAxisSpacing: 16,
                 crossAxisSpacing: 16,
                 children: [
-                  ACButton(icon: Icons.swap_vert, label: 'Swing', onTap: () {}),
+                  ACButton(child: AcFanIcon(size: 30, color: AppColors.textSecondary), label: 'Swing', onTap: () {}),
                   ACButton(icon: Icons.bolt, label: 'Turbo', onTap: () {}),
                   ACButton(icon: Icons.timer_outlined, label: 'Timer', onTap: () {}),
-                  ACButton(icon: Icons.nightlight_round, label: 'Sleep', onTap: () {}),
-                  ACButton(icon: Icons.eco_outlined, label: 'Eco', onTap: () {}),
+                  ACButton(child: AcHeatIcon(size: 30, color: AppColors.textSecondary), label: 'Sleep', onTap: () {}),
+                  ACButton(child: AcDryIcon(size: 30, color: AppColors.textSecondary), label: 'Eco', onTap: () {}),
                   ACButton(icon: Icons.cleaning_services, label: 'Clean', onTap: () {}),
                 ],
               ),
@@ -202,13 +203,13 @@ class _ControlScreenState extends State<ControlScreen> {
     );
   }
 
-  IconData _getModeIcon() {
+  Widget _getModeWidget() {
     switch (_mode) {
-      case 'Cool': return Icons.ac_unit;
-      case 'Heat': return Icons.wb_sunny;
-      case 'Dry': return Icons.water_drop;
-      case 'Fan': return Icons.air;
-      default: return Icons.ac_unit;
+      case 'Cool': return AcCoolIcon(size: 32, color: Colors.white);
+      case 'Heat': return AcHeatIcon(size: 32, color: Colors.white);
+      case 'Dry':  return AcDryIcon(size: 32, color: Colors.white);
+      case 'Fan':  return AcFanIcon(size: 32, color: Colors.white);
+      default:     return AcCoolIcon(size: 32, color: Colors.white);
     }
   }
 

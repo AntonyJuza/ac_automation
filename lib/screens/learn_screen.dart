@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import 'package:ac_automation/models/dynamic_config.dart';
+import 'package:ac_automation/widgets/ac_icons.dart';
 
 // Each button step definition
 class _ButtonStep {
@@ -163,7 +164,7 @@ class _LearnScreenState extends State<LearnScreen> {
                       color: AppColors.primaryBrand,
                     ),
                   )
-                : Icon(step.icon, size: 80, color: AppColors.primaryBrand),
+                : _buildStepIcon(step.key),
           ),
           const SizedBox(height: 32),
           // Instruction text
@@ -319,6 +320,30 @@ class _LearnScreenState extends State<LearnScreen> {
         ],
       ),
     );
+  }
+
+  // ---------- Step Icon ----------
+
+  Widget _buildStepIcon(String key) {
+    const c = AppColors.primaryBrand;
+    switch (key) {
+      case 'power_on':
+      case 'power_off':
+        return AcRemoteIcon(size: 80, color: c);
+      case 'temp_up':
+      case 'temp_down':
+        return AcTempIcon(size: 80, color: c);
+      case 'mode':
+        return AcCoolIcon(size: 80, color: c);
+      case 'fan_speed':
+        return AcFanIcon(size: 80, color: c);
+      case 'swing':
+        return AcFanIcon(size: 80, color: c);
+      case 'sleep':
+        return AcHeatIcon(size: 80, color: c);
+      default:
+        return AcCoolIcon(size: 80, color: c);
+    }
   }
 
   // ---------- Review Area (all done) ----------
