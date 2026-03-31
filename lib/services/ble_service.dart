@@ -190,6 +190,13 @@ class BLEService extends ChangeNotifier {
     final msg = utf8.decode(value);
     debugPrint('[BLE] IR frame: ${msg.substring(0, msg.length.clamp(0, 70))}');
 
+    // ── Single-packet Encoded JSON path (if MTU allows) ──
+    if (msg.startsWith('{') && msg.trim().endsWith('}')) {
+      debugPrint('[BLE] Unchunked JSON frame received');
+      _parseEncodedJson(msg);
+      return;
+    }
+
     // ── Encoded path ─────────────────────────────────────────────
     if (msg == 'ENC_START') {
       _encBuffer.clear();
@@ -301,38 +308,10 @@ class BLEService extends ChangeNotifier {
   Future<bool> transmitButton(String key, IRButton button) =>
       sendCommand(button.toSendCommand(key));
 
-  /// Save a full profile to ESP32 NVS using chunked write protocol
+  /// Save a full profile to ESP32 NVS
   Future<bool> saveProfileToDevice(String profileJson) async {
-    const int chunkSize = 450;
-
-    final startOk = await sendCommand('PROFILE_START');
-    if (!startOk) return false;
-
-    try {
-      await statusStream
-          .firstWhere((s) => s == 'PROFILE_READY')
-          .timeout(const Duration(seconds: 5));
-    } on TimeoutException {
-      debugPrint('[BLE] PROFILE_READY not received');
-      return false;
-    }
-
-    int offset = 0;
-    int chunkNum = 0;
-    while (offset < profileJson.length) {
-      final end = (offset + chunkSize < profileJson.length)
-          ? offset + chunkSize
-          : profileJson.length;
-      final ok = await sendCommand('PROFILE_CHUNK:${profileJson.substring(offset, end)}');
-      if (!ok) return false;
-      offset = end;
-      chunkNum++;
-      await Future.delayed(const Duration(milliseconds: 30));
-    }
-
-    debugPrint('[BLE] Sent $chunkNum profile chunks');
-    final endOk = await sendCommand('PROFILE_END');
-    if (!endOk) return false;
+    final ok = await sendCommand('SAVE_PROFILE:$profileJson');
+    if (!ok) return false;
 
     try {
       final response = await statusStream

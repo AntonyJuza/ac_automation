@@ -6,21 +6,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ACProvider with ChangeNotifier {
   List<ACProfile> _profiles = [];
   bool _isPresenceDetected = false;
-  String _presenceStatus = 'NONE';
   bool _isAcOn = false;
   bool _isConnected = false;
-  String _configName = '';
-  int _onTimeMs = 60000;
-  int _offTimeMs = 300000;
 
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
-  String get presenceStatus => _presenceStatus;
   bool get isAcOn => _isAcOn;
   bool get isConnected => _isConnected;
-  String get configName => _configName;
-  int get onTimeMs => _onTimeMs;
-  int get offTimeMs => _offTimeMs;
 
   ACProvider() {
     _loadProfiles();
@@ -80,25 +72,16 @@ class ACProvider with ChangeNotifier {
     final parts = status.split('|');
     for (var part in parts) {
       if (part.startsWith('PRESENCE=')) {
-        final statusVal = part.split('=')[1];
-        if (_presenceStatus != statusVal) {
-          _presenceStatus = statusVal;
-          _isPresenceDetected = (statusVal == 'YES' || statusVal == 'MOVING' || statusVal == 'STATIC' || statusVal == 'BOTH');
+        final isDetected = part.split('=')[1] == 'YES';
+        if (_isPresenceDetected != isDetected) {
+          _isPresenceDetected = isDetected;
         }
       }
       if (part.startsWith('AC=')) {
         final isOn = part.split('=')[1] == 'ON';
-        if (_isAcOn != isOn) _isAcOn = isOn;
-      }
-      if (part.startsWith('CONFIG=')) {
-        final name = part.split('=')[1];
-        if (name != 'NONE' && _configName != name) _configName = name;
-      }
-      if (part.startsWith('ON_TIME=')) {
-        _onTimeMs = int.tryParse(part.split('=')[1]) ?? _onTimeMs;
-      }
-      if (part.startsWith('OFF_TIME=')) {
-        _offTimeMs = int.tryParse(part.split('=')[1]) ?? _offTimeMs;
+        if (_isAcOn != isOn) {
+          _isAcOn = isOn;
+        }
       }
     }
     notifyListeners();
