@@ -28,6 +28,7 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
   final _sendRepeatController = TextEditingController(text: "3");
 
   bool _isUploading = false;
+  double _uploadProgress = 0.0;
 
   @override
   void dispose() {
@@ -73,7 +74,12 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
         sendRepeat: int.parse(_sendRepeatController.text),
       );
 
-      final success = await bleService.sendDynamicConfig(config);
+      final success = await bleService.sendDynamicConfig(
+        config,
+        onProgress: (p) {
+          if (mounted) setState(() => _uploadProgress = p);
+        },
+      );
 
       if (!mounted) return;
 
@@ -94,7 +100,7 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isUploading = false);
+      if (mounted) setState(() { _isUploading = false; _uploadProgress = 0.0; });
     }
   }
 
@@ -184,24 +190,62 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
               ),
               _buildTextField('Stop Mark', _stopMarkController),
               const SizedBox(height: 24),
-              ElevatedButton(
-                onPressed: _isUploading ? null : _uploadConfig,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBrand,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: _isUploading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                      )
-                    : const Text(
-                        'Upload to ESP32',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+              if (_isUploading) ...[                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBackground,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [AppStyles.softShadow],
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Uploading to ESP32...',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            '${(_uploadProgress * 100).toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primaryBrand,
+                            ),
+                          ),
+                        ],
                       ),
-              ),
+                      const SizedBox(height: 12),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: LinearProgressIndicator(
+                          value: _uploadProgress,
+                          minHeight: 8,
+                          backgroundColor: AppColors.secondaryBackground,
+                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryBrand),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else
+                ElevatedButton(
+                  onPressed: _uploadConfig,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primaryBrand,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  child: const Text(
+                    'Upload to ESP32',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                ),
             ],
           ),
         ),

@@ -352,19 +352,30 @@ class BLEService extends ChangeNotifier {
     }
   }
 
-  Future<bool> sendDynamicConfig(DynamicConfig config, {String name = "Dynamic_AC"}) async {
+  Future<bool> sendDynamicConfig(DynamicConfig config, {String name = "Dynamic_AC", void Function(double progress)? onProgress}) async {
+    final payload = config.toPayload();
+    final totalSteps = payload.length + 2; // VAR_START + chunks + VAR_END
+    int currentStep = 0;
+
+    onProgress?.call(0.0);
+
     final startOk = await sendCommand('VAR_START:$name');
     if (!startOk) return false;
+    currentStep++;
+    onProgress?.call(currentStep / totalSteps);
 
-    final payload = config.toPayload();
     for (final entry in payload.entries) {
       final ok = await sendCommand('VAR_CHUNK:${entry.key}:${entry.value}');
       if (!ok) return false;
+      currentStep++;
+      onProgress?.call(currentStep / totalSteps);
       await Future.delayed(const Duration(milliseconds: 30));
     }
 
     final endOk = await sendCommand('VAR_END');
     if (!endOk) return false;
+    currentStep++;
+    onProgress?.call(currentStep / totalSteps);
 
     try {
       final response = await statusStream
@@ -374,6 +385,7 @@ class BLEService extends ChangeNotifier {
         debugPrint('[BLE] Dynamic config save error: $response');
         return false;
       }
+      onProgress?.call(1.0);
       debugPrint('[BLE] Dynamic config saved: $response');
       return true;
     } on TimeoutException {
