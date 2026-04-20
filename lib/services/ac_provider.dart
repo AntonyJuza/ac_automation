@@ -12,6 +12,7 @@ class ACProvider with ChangeNotifier {
   String _configName = '';
   int _onTimeMs = 60000;
   int _offTimeMs = 300000;
+  String _deviceId = 'UNKNOWN';
 
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
@@ -21,6 +22,7 @@ class ACProvider with ChangeNotifier {
   String get configName => _configName;
   int get onTimeMs => _onTimeMs;
   int get offTimeMs => _offTimeMs;
+  String get deviceId => _deviceId;
 
   ACProvider() {
     _loadProfiles();
@@ -99,6 +101,10 @@ class ACProvider with ChangeNotifier {
       }
       if (part.startsWith('OFF_TIME=')) {
         _offTimeMs = int.tryParse(part.split('=')[1]) ?? _offTimeMs;
+      }
+      if (part.startsWith('ID=')) {
+        final id = part.split('=')[1];
+        if (_deviceId != id) _deviceId = id;
       }
     }
     notifyListeners();
