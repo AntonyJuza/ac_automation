@@ -116,6 +116,12 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       actions: [
+        if (bleService.isConnected)
+          IconButton(
+            icon: const Icon(Icons.wifi, color: AppColors.textPrimary, size: 22),
+            onPressed: () => _showWifiConfigDialog(context, bleService),
+            tooltip: 'Configure Wi-Fi',
+          ),
         // Connection status
         if (bleService.isConnected)
           Padding(
@@ -413,6 +419,80 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // ── Wi-Fi Config Dialog ─────────────────────────────────────────────────
+
+  void _showWifiConfigDialog(BuildContext context, BLEService bleService) {
+    final ssidController = TextEditingController();
+    final passController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Configure AC Wi-Fi'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Enter your Wi-Fi credentials to let the AC log data to the cloud.',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: ssidController,
+              decoration: InputDecoration(
+                labelText: 'Wi-Fi Name (SSID)',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppColors.secondaryBackground,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passController,
+              decoration: InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                filled: true,
+                fillColor: AppColors.secondaryBackground,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              obscureText: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final ssid = ssidController.text.trim();
+              final pass = passController.text;
+              if (ssid.isNotEmpty) {
+                Navigator.pop(ctx);
+                final success = await bleService.setWiFi(ssid, pass);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success ? 'Wi-Fi credentials sent!' : 'Failed to send to device'),
+                      backgroundColor: success ? AppColors.statusGreen : AppColors.statusRed,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryBrand,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Save & Connect', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
 
   // ── Connect Prompt ────────────────────────────────────────────────────────
 

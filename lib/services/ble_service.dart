@@ -409,6 +409,9 @@ class BLEService extends ChangeNotifier {
   Future<bool> getTiming() =>
       sendCommand('GET_TIMING');
 
+  Future<bool> setWiFi(String ssid, String pass) =>
+      sendCommand('SET_WIFI:$ssid:$pass');
+
   // ---------- Capture one IR button ----------
 
   Future<IRButton?> captureIRButton({
