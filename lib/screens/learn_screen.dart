@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import 'package:ac_automation/models/dynamic_config.dart';
+import 'package:ac_automation/services/api_service.dart';
 
 // Each button step definition
 class _ButtonStep {
@@ -554,6 +555,17 @@ class _LearnScreenState extends State<LearnScreen> {
       }
     } else {
       debugPrint('[App] Not connected — profile saved locally only');
+    }
+
+    // 3. Sync full profile to cloud
+    if (acProvider.deviceId != 'UNKNOWN') {
+      final configName = '${widget.brand}_${widget.model ?? "AC"}';
+      debugPrint('[App] Synchronizing full profile to cloud for ${acProvider.deviceId}');
+      await ApiService.syncDevice(
+        deviceId: acProvider.deviceId,
+        activeConfigName: configName,
+        configData: profile.toJson(),
+      );
     }
 
     if (mounted) router.go('/');

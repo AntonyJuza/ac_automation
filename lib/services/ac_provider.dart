@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ac_automation/services/api_service.dart';
 
 class ACProvider with ChangeNotifier {
   List<ACProfile> _profiles = [];
@@ -104,9 +105,32 @@ class ACProvider with ChangeNotifier {
       }
       if (part.startsWith('ID=')) {
         final id = part.split('=')[1];
-        if (_deviceId != id) _deviceId = id;
+        if (_deviceId != id) {
+          _deviceId = id;
+          _syncWithCloud();
+        }
       }
     }
     notifyListeners();
+  }
+
+  Future<void> _syncWithCloud() async {
+    if (_deviceId == 'UNKNOWN') return;
+    
+    debugPrint('[Scanner] Fetching cloud data for $_deviceId');
+    final data = await ApiService.getDevice(_deviceId);
+    if (data != null && data['configData'] != null) {
+       final profileMap = data['configData'];
+       try {
+         final profile = ACProfile.fromJson(profileMap);
+         bool exists = _profiles.any((p) => p.id == profile.id || p.name == profile.name);
+         if (!exists) {
+           await addProfile(profile);
+           debugPrint('[App] Seamlessly downloaded profile ${profile.name} from Cloud!');
+         }
+       } catch(e) {
+         debugPrint('[App] Error parsing cloud profile: $e');
+       }
+    }
   }
 }
