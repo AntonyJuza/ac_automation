@@ -61,6 +61,11 @@ class _LearnScreenState extends State<LearnScreen> {
   String? _captureError;
   bool _lastCaptureSuccess = false;
 
+  // Upload progress state
+  bool _isUploading = false;
+  String _uploadStatus = '';
+  double? _uploadProgress;
+
   bool get _isComplete => _currentStep >= _steps.length;
 
   @override
@@ -400,26 +405,57 @@ class _LearnScreenState extends State<LearnScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _capturedData.length >= 2 ? _saveProfile : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusGreen,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
+          if (_isUploading)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryBackground,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primaryBrand.withValues(alpha: 0.2)),
               ),
-              child: const Text(
-                'Save Profile to Device',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold),
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _uploadProgress,
+                      backgroundColor: AppColors.primaryBackground,
+                      color: AppColors.primaryBrand,
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _uploadStatus,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _capturedData.length >= 2 ? _saveProfile : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.statusGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Save Profile to Device',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -492,6 +528,12 @@ class _LearnScreenState extends State<LearnScreen> {
   }
 
   void _saveProfile() async {
+    setState(() {
+      _isUploading = true;
+      _uploadStatus = 'Saving locally...';
+      _uploadProgress = 0.05;
+    });
+
     final bleService = Provider.of<BLEService>(context, listen: false);
     final acProvider = Provider.of<ACProvider>(context, listen: false);
     final router = GoRouter.of(context);
@@ -521,6 +563,11 @@ class _LearnScreenState extends State<LearnScreen> {
     // 1. Save locally on phone
     await acProvider.addProfile(profile);
 
+    setState(() {
+      _uploadStatus = 'Uploading to Device...';
+      _uploadProgress = 0.1;
+    });
+
     // 2. Upload to ESP32 via Dynamic Config (VAR_START/VAR_CHUNK/VAR_END)
     if (bleService.isConnected) {
       // Extract timing from the power_on button (the primary reference)
@@ -544,7 +591,18 @@ class _LearnScreenState extends State<LearnScreen> {
           sendRepeat: 3,
         );
 
-        final saved = await bleService.sendDynamicConfig(config, name: configName);
+        final saved = await bleService.sendDynamicConfig(
+          config, 
+          name: configName,
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() {
+                _uploadProgress = 0.1 + (progress * 0.7); // Progress from 0.1 to 0.8
+                _uploadStatus = 'Uploading to Device... ${(progress * 100).toInt()}%';
+              });
+            }
+          },
+        );
         if (saved) {
           debugPrint('[App] Dynamic config "$configName" uploaded to ESP32');
         } else {
@@ -557,16 +615,32 @@ class _LearnScreenState extends State<LearnScreen> {
       debugPrint('[App] Not connected — profile saved locally only');
     }
 
+    setState(() {
+      _uploadStatus = 'Syncing to cloud...';
+      _uploadProgress = 0.85;
+    });
+
     // 3. Sync full profile to cloud
     if (acProvider.deviceId != 'UNKNOWN') {
       final configName = '${widget.brand}_${widget.model ?? "AC"}';
       debugPrint('[App] Synchronizing full profile to cloud for ${acProvider.deviceId}');
-      await ApiService.syncDevice(
-        deviceId: acProvider.deviceId,
-        activeConfigName: configName,
-        configData: profile.toJson(),
-      );
+      try {
+        await ApiService.syncDevice(
+          deviceId: acProvider.deviceId,
+          activeConfigName: configName,
+          configData: profile.toJson(),
+        );
+      } catch (e) {
+        debugPrint('[App] Cloud sync failed: $e');
+      }
     }
+
+    setState(() {
+      _uploadStatus = 'Done!';
+      _uploadProgress = 1.0;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 600));
 
     if (mounted) router.go('/');
   }

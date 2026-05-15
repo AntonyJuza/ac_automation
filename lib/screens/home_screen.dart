@@ -21,6 +21,9 @@ class _HomeScreenState extends State<HomeScreen> {
   double _onDelayMin = 1.0;
   double _offDelayMin = 5.0;
 
+  int _lastProviderOnTime = -1;
+  int _lastProviderOffTime = -1;
+
   @override
   void initState() {
     super.initState();
@@ -39,9 +42,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final acProvider = Provider.of<ACProvider>(context);
     final profile = acProvider.profiles.isNotEmpty ? acProvider.profiles.first : null;
 
+    // Sync sliders with device timing if the underlying value changes
+    if (acProvider.onTimeMs != _lastProviderOnTime) {
+      _lastProviderOnTime = acProvider.onTimeMs;
+      _onDelayMin = (_lastProviderOnTime / 60000.0).clamp(0.5, 30.0);
+    }
+    if (acProvider.offTimeMs != _lastProviderOffTime) {
+      _lastProviderOffTime = acProvider.offTimeMs;
+      _offDelayMin = (_lastProviderOffTime / 60000.0).clamp(0.5, 30.0);
+    }
+
     return Scaffold(
       backgroundColor: AppColors.secondaryBackground,
-      appBar: _buildAppBar(bleService),
+      appBar: _buildAppBar(bleService, acProvider),
       body: bleService.isConnected
           ? SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
@@ -98,15 +111,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── App Bar ──────────────────────────────────────────────────────────────
 
-  PreferredSizeWidget _buildAppBar(BLEService bleService) {
+  PreferredSizeWidget _buildAppBar(BLEService bleService, ACProvider acProvider) {
     return AppBar(
-      // backgroundColor: AppColors.primaryBackground,
-      // elevation: 0,
-      // centerTitle: true,
-      // leading: IconButton(
-      //   icon: const Icon(Icons.menu, color: AppColors.textPrimary),
-      //   onPressed: () {},
-      // ),
       title: const Text(
         'AC Control',
         style: TextStyle(
@@ -118,14 +124,18 @@ class _HomeScreenState extends State<HomeScreen> {
       actions: [
         if (bleService.isConnected)
           IconButton(
-            icon: const Icon(Icons.wifi, color: AppColors.textPrimary, size: 22),
+            icon: Icon(
+              acProvider.isWifiConnected ? Icons.wifi : Icons.wifi_off,
+              color: acProvider.isWifiConnected ? AppColors.statusGreen : AppColors.textSecondary, 
+              size: 22
+            ),
             onPressed: () => _showWifiConfigDialog(context, bleService),
-            tooltip: 'Configure Wi-Fi',
+            tooltip: acProvider.isWifiConnected ? 'Wi-Fi Connected' : 'Wi-Fi Disconnected',
           ),
         // Connection status
         if (bleService.isConnected)
           Padding(
-            padding: const EdgeInsets.only(right: 4),
+            padding: const EdgeInsets.only(right: 16),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -146,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
                 const Text(
-                  'CONNECTED',
+                  'BLE CONN',
                   style: TextStyle(
                     fontSize: 8,
                     color: AppColors.textSecondary,

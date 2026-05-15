@@ -65,15 +65,14 @@ class BLEService extends ChangeNotifier {
               ? r.device.platformName 
               : r.advertisementData.advName;
           
-          debugPrint('[BLE] Scan found: name="$name" id=${r.device.remoteId}');
-          
-          // Allow any device whose name starts with AC_Automation or ESP_, or unnamed devices
-          if (name.isNotEmpty && !name.startsWith('AC_Automation') && !name.startsWith('ESP_')) continue;
+          // Allow any device whose name starts with AC_ or ESP_, or unnamed devices
+          if (name.isNotEmpty && !name.startsWith('AC_') && !name.startsWith('ESP_')) continue;
 
           final idx = _scanResults
               .indexWhere((s) => s.device.remoteId == r.device.remoteId);
           if (idx >= 0) {
             _scanResults[idx] = r;
+            changed = true;
           } else {
             _scanResults.add(r);
             changed = true;

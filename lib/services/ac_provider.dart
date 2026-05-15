@@ -14,6 +14,7 @@ class ACProvider with ChangeNotifier {
   int _onTimeMs = 60000;
   int _offTimeMs = 300000;
   String _deviceId = 'UNKNOWN';
+  bool _isWifiConnected = false;
 
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
@@ -24,6 +25,7 @@ class ACProvider with ChangeNotifier {
   int get onTimeMs => _onTimeMs;
   int get offTimeMs => _offTimeMs;
   String get deviceId => _deviceId;
+  bool get isWifiConnected => _isWifiConnected;
 
   ACProvider() {
     _loadProfiles();
@@ -77,6 +79,16 @@ class ACProvider with ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    if (status.startsWith('WS:')) {
+      final stat = status.substring(3);
+      final wifiConn = (stat == 'con' || stat == 'CONNECTED');
+      if (_isWifiConnected != wifiConn) {
+        _isWifiConnected = wifiConn;
+        notifyListeners();
+      }
+      return;
+    }
     
     _lastError = null;
     // Expected format: AC=OFF|PRESENCE=YES
@@ -108,6 +120,13 @@ class ACProvider with ChangeNotifier {
         if (_deviceId != id) {
           _deviceId = id;
           _syncWithCloud();
+        }
+      }
+      if (part.startsWith('WIFI=')) {
+        final wifiStat = part.split('=')[1];
+        final wifiConn = (wifiStat == 'con' || wifiStat == 'CONNECTED');
+        if (_isWifiConnected != wifiConn) {
+          _isWifiConnected = wifiConn;
         }
       }
     }
