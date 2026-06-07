@@ -5,9 +5,13 @@ import 'package:ac_automation/screens/control_screen.dart';
 import 'package:ac_automation/screens/setup_screen.dart';
 import 'package:ac_automation/screens/learn_screen.dart';
 import 'package:ac_automation/screens/dynamic_config_screen.dart';
+import 'package:ac_automation/screens/login_screen.dart';
+import 'package:ac_automation/screens/register_screen.dart';
+import 'package:ac_automation/screens/forgot_screen.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:provider/provider.dart';
+import 'package:ac_automation/services/auth_service.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/models/ac_profile.dart';
@@ -19,17 +23,47 @@ class ACAutomationApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ACProvider()),
         ChangeNotifierProvider(create: (_) => BLEService()),
       ],
       child: Builder(
         builder: (context) {
+          final authService = Provider.of<AuthService>(context, listen: false);
+
           final GoRouter router = GoRouter(
             initialLocation: '/',
+            refreshListenable: authService,
+            redirect: (context, state) {
+              final loggedIn = authService.isAuthenticated;
+              final loggingIn = state.matchedLocation == '/login';
+              final registering = state.matchedLocation == '/register';
+              final forgetting = state.matchedLocation == '/forgot';
+
+              if (!loggedIn && !loggingIn && !registering && !forgetting) {
+                return '/login';
+              }
+              if (loggedIn && (loggingIn || registering || forgetting)) {
+                return '/';
+              }
+              return null;
+            },
             routes: [
               GoRoute(
                 path: '/',
                 builder: (context, state) => const HomeScreen(),
+              ),
+              GoRoute(
+                path: '/login',
+                builder: (context, state) => const LoginScreen(),
+              ),
+              GoRoute(
+                path: '/register',
+                builder: (context, state) => const RegisterScreen(),
+              ),
+              GoRoute(
+                path: '/forgot',
+                builder: (context, state) => const ForgotScreen(),
               ),
               GoRoute(
                 path: '/control',
@@ -61,41 +95,42 @@ class ACAutomationApp extends StatelessWidget {
           );
 
           return MaterialApp.router(
-      title: 'AC Automation',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.primaryBackground,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primaryBrand,
-          primary: AppColors.primaryBrand,
-          secondary: AppColors.secondaryAccent,
-          surface: AppColors.primaryBackground,
-          onSurface: AppColors.textPrimary,
-        ),
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.bold,
-          ),
-          bodyLarge: TextStyle(color: AppColors.textPrimary),
-          bodyMedium: TextStyle(color: AppColors.textSecondary),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.primaryBackground,
-          elevation: 0,
-          centerTitle: false,
-          titleTextStyle: TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      routerConfig: router,
+            title: 'AC Automation',
+            debugShowCheckedModeBanner: false,
+            theme: ThemeData(
+              useMaterial3: true,
+              scaffoldBackgroundColor: AppColors.primaryBackground,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: AppColors.primaryBrand,
+                primary: AppColors.primaryBrand,
+                secondary: AppColors.secondaryAccent,
+                surface: AppColors.primaryBackground,
+                onSurface: AppColors.textPrimary,
+              ),
+              textTheme: const TextTheme(
+                displayLarge: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+                bodyLarge: TextStyle(color: AppColors.textPrimary),
+                bodyMedium: TextStyle(color: AppColors.textSecondary),
+              ),
+              appBarTheme: const AppBarTheme(
+                backgroundColor: AppColors.primaryBackground,
+                elevation: 0,
+                centerTitle: false,
+                titleTextStyle: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            routerConfig: router,
           );
         },
       ),
     );
   }
 }
+

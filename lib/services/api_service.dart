@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ac_automation/utils/constants.dart';
 
 class ApiService {
@@ -19,10 +20,16 @@ class ApiService {
         if (configData != null) 'configData': configData,
       };
 
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
       debugPrint('Syncing device to cloud: $deviceId');
       final response = await http.post(
         url,
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
         body: jsonEncode(body),
       );
       
@@ -45,7 +52,16 @@ class ApiService {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId');
       debugPrint('Fetching device data from cloud: $url');
-      final response = await http.get(url);
+      
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.get(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
       
       if (response.statusCode == 200) {
         debugPrint('Cloud fetch successful!');
@@ -59,3 +75,4 @@ class ApiService {
     }
   }
 }
+
