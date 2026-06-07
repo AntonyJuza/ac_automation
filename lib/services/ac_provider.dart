@@ -2,17 +2,30 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ac_automation/services/api_service.dart';
 
 class ACProvider with ChangeNotifier {
   List<ACProfile> _profiles = [];
   bool _isPresenceDetected = false;
+  String _presenceStatus = 'NONE';
   bool _isAcOn = false;
   bool _isConnected = false;
+  String _configName = '';
+  int _onTimeMs = 60000;
+  int _offTimeMs = 300000;
+  String _deviceId = 'UNKNOWN';
+  bool _isWifiConnected = false;
 
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
+  String get presenceStatus => _presenceStatus;
   bool get isAcOn => _isAcOn;
   bool get isConnected => _isConnected;
+  String get configName => _configName;
+  int get onTimeMs => _onTimeMs;
+  int get offTimeMs => _offTimeMs;
+  String get deviceId => _deviceId;
+  bool get isWifiConnected => _isWifiConnected;
 
   ACProvider() {
     _loadProfiles();
@@ -66,24 +79,77 @@ class ACProvider with ChangeNotifier {
       notifyListeners();
       return;
     }
+
+    if (status.startsWith('WS:')) {
+      final stat = status.substring(3);
+      final wifiConn = (stat == 'con' || stat == 'CONNECTED');
+      if (_isWifiConnected != wifiConn) {
+        _isWifiConnected = wifiConn;
+        notifyListeners();
+      }
+      return;
+    }
     
     _lastError = null;
     // Expected format: AC=OFF|PRESENCE=YES
     final parts = status.split('|');
     for (var part in parts) {
       if (part.startsWith('PRESENCE=')) {
-        final isDetected = part.split('=')[1] == 'YES';
-        if (_isPresenceDetected != isDetected) {
-          _isPresenceDetected = isDetected;
+        final statusVal = part.split('=')[1];
+        if (_presenceStatus != statusVal) {
+          _presenceStatus = statusVal;
+          _isPresenceDetected = (statusVal == 'YES' || statusVal == 'MOVING' || statusVal == 'STATIC' || statusVal == 'BOTH');
         }
       }
       if (part.startsWith('AC=')) {
         final isOn = part.split('=')[1] == 'ON';
-        if (_isAcOn != isOn) {
-          _isAcOn = isOn;
+        if (_isAcOn != isOn) _isAcOn = isOn;
+      }
+      if (part.startsWith('CONFIG=')) {
+        final name = part.split('=')[1];
+        if (name != 'NONE' && _configName != name) _configName = name;
+      }
+      if (part.startsWith('ON_TIME=')) {
+        _onTimeMs = int.tryParse(part.split('=')[1]) ?? _onTimeMs;
+      }
+      if (part.startsWith('OFF_TIME=')) {
+        _offTimeMs = int.tryParse(part.split('=')[1]) ?? _offTimeMs;
+      }
+      if (part.startsWith('ID=')) {
+        final id = part.split('=')[1];
+        if (_deviceId != id) {
+          _deviceId = id;
+          _syncWithCloud();
+        }
+      }
+      if (part.startsWith('WIFI=')) {
+        final wifiStat = part.split('=')[1];
+        final wifiConn = (wifiStat == 'con' || wifiStat == 'CONNECTED');
+        if (_isWifiConnected != wifiConn) {
+          _isWifiConnected = wifiConn;
         }
       }
     }
     notifyListeners();
+  }
+
+  Future<void> _syncWithCloud() async {
+    if (_deviceId == 'UNKNOWN') return;
+    
+    debugPrint('[Scanner] Fetching cloud data for $_deviceId');
+    final data = await ApiService.getDevice(_deviceId);
+    if (data != null && data['configData'] != null) {
+       final profileMap = data['configData'];
+       try {
+         final profile = ACProfile.fromJson(profileMap);
+         bool exists = _profiles.any((p) => p.id == profile.id || p.name == profile.name);
+         if (!exists) {
+           await addProfile(profile);
+           debugPrint('[App] Seamlessly downloaded profile ${profile.name} from Cloud!');
+         }
+       } catch(e) {
+         debugPrint('[App] Error parsing cloud profile: $e');
+       }
+    }
   }
 }

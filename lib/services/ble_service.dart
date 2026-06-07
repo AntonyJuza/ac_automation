@@ -65,13 +65,14 @@ class BLEService extends ChangeNotifier {
               ? r.device.platformName 
               : r.advertisementData.advName;
           
-          // Allow AC_Automation or empty name (sometimes name takes a moment to resolve)
-          if (name.isNotEmpty && name != 'AC_Automation') continue;
+          // Allow any device whose name starts with AC_ or ESP_, or unnamed devices
+          if (name.isNotEmpty && !name.startsWith('AC_') && !name.startsWith('ESP_')) continue;
 
           final idx = _scanResults
               .indexWhere((s) => s.device.remoteId == r.device.remoteId);
           if (idx >= 0) {
             _scanResults[idx] = r;
+            changed = true;
           } else {
             _scanResults.add(r);
             changed = true;
@@ -190,13 +191,6 @@ class BLEService extends ChangeNotifier {
     final msg = utf8.decode(value);
     debugPrint('[BLE] IR frame: ${msg.substring(0, msg.length.clamp(0, 70))}');
 
-    // ── Single-packet Encoded JSON path (if MTU allows) ──
-    if (msg.startsWith('{') && msg.trim().endsWith('}')) {
-      debugPrint('[BLE] Unchunked JSON frame received');
-      _parseEncodedJson(msg);
-      return;
-    }
-
     // ── Encoded path ─────────────────────────────────────────────
     if (msg == 'ENC_START') {
       _encBuffer.clear();
@@ -308,10 +302,38 @@ class BLEService extends ChangeNotifier {
   Future<bool> transmitButton(String key, IRButton button) =>
       sendCommand(button.toSendCommand(key));
 
-  /// Save a full profile to ESP32 NVS
+  /// Save a full profile to ESP32 NVS using chunked write protocol
   Future<bool> saveProfileToDevice(String profileJson) async {
-    final ok = await sendCommand('SAVE_PROFILE:$profileJson');
-    if (!ok) return false;
+    const int chunkSize = 450;
+
+    final startOk = await sendCommand('PROFILE_START');
+    if (!startOk) return false;
+
+    try {
+      await statusStream
+          .firstWhere((s) => s == 'PROFILE_READY')
+          .timeout(const Duration(seconds: 5));
+    } on TimeoutException {
+      debugPrint('[BLE] PROFILE_READY not received');
+      return false;
+    }
+
+    int offset = 0;
+    int chunkNum = 0;
+    while (offset < profileJson.length) {
+      final end = (offset + chunkSize < profileJson.length)
+          ? offset + chunkSize
+          : profileJson.length;
+      final ok = await sendCommand('PROFILE_CHUNK:${profileJson.substring(offset, end)}');
+      if (!ok) return false;
+      offset = end;
+      chunkNum++;
+      await Future.delayed(const Duration(milliseconds: 30));
+    }
+
+    debugPrint('[BLE] Sent $chunkNum profile chunks');
+    final endOk = await sendCommand('PROFILE_END');
+    if (!endOk) return false;
 
     try {
       final response = await statusStream
@@ -329,19 +351,30 @@ class BLEService extends ChangeNotifier {
     }
   }
 
-  Future<bool> sendDynamicConfig(DynamicConfig config, {String name = "Dynamic_AC"}) async {
+  Future<bool> sendDynamicConfig(DynamicConfig config, {String name = "Dynamic_AC", void Function(double progress)? onProgress}) async {
+    final payload = config.toPayload();
+    final totalSteps = payload.length + 2; // VAR_START + chunks + VAR_END
+    int currentStep = 0;
+
+    onProgress?.call(0.0);
+
     final startOk = await sendCommand('VAR_START:$name');
     if (!startOk) return false;
+    currentStep++;
+    onProgress?.call(currentStep / totalSteps);
 
-    final payload = config.toPayload();
     for (final entry in payload.entries) {
       final ok = await sendCommand('VAR_CHUNK:${entry.key}:${entry.value}');
       if (!ok) return false;
+      currentStep++;
+      onProgress?.call(currentStep / totalSteps);
       await Future.delayed(const Duration(milliseconds: 30));
     }
 
     final endOk = await sendCommand('VAR_END');
     if (!endOk) return false;
+    currentStep++;
+    onProgress?.call(currentStep / totalSteps);
 
     try {
       final response = await statusStream
@@ -351,6 +384,7 @@ class BLEService extends ChangeNotifier {
         debugPrint('[BLE] Dynamic config save error: $response');
         return false;
       }
+      onProgress?.call(1.0);
       debugPrint('[BLE] Dynamic config saved: $response');
       return true;
     } on TimeoutException {
@@ -373,6 +407,9 @@ class BLEService extends ChangeNotifier {
 
   Future<bool> getTiming() =>
       sendCommand('GET_TIMING');
+
+  Future<bool> setWiFi(String ssid, String pass) =>
+      sendCommand('SET_WIFI:$ssid:$pass');
 
   // ---------- Capture one IR button ----------
 

@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 import 'package:ac_automation/models/ir_button.dart';
-import 'package:ac_automation/models/dynamic_config.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
+import 'package:ac_automation/models/dynamic_config.dart';
+import 'package:ac_automation/services/api_service.dart';
 
 // Each button step definition
 class _ButtonStep {
@@ -27,10 +28,10 @@ class _ButtonStep {
 const List<_ButtonStep> _steps = [
   _ButtonStep(key: 'power_off',  label: 'Power OFF',   icon: Icons.power_settings_new),
   _ButtonStep(key: 'power_on',   label: 'Power ON',    icon: Icons.power_settings_new),
-  _ButtonStep(key: 'temp_up',    label: 'Temp +',      icon: Icons.add_circle_outline),
-  _ButtonStep(key: 'temp_down',  label: 'Temp −',      icon: Icons.remove_circle_outline),
-  _ButtonStep(key: 'mode',       label: 'Mode',        icon: Icons.ac_unit),
-  _ButtonStep(key: 'fan_speed',  label: 'Fan Speed',   icon: Icons.air),
+  _ButtonStep(key: 'temp_up',    label: 'Temp +',      icon: Icons.add_circle_outline, optional: true),
+  _ButtonStep(key: 'temp_down',  label: 'Temp −',      icon: Icons.remove_circle_outline, optional: true),
+  _ButtonStep(key: 'mode',       label: 'Mode',        icon: Icons.ac_unit, optional: true),
+  _ButtonStep(key: 'fan_speed',  label: 'Fan Speed',   icon: Icons.air, optional: true),
   _ButtonStep(key: 'swing',      label: 'Swing',       icon: Icons.swap_vert,    optional: true),
   _ButtonStep(key: 'sleep',      label: 'Sleep',       icon: Icons.nightlight_round, optional: true),
 ];
@@ -59,6 +60,11 @@ class _LearnScreenState extends State<LearnScreen> {
   bool _isCapturing = false;
   String? _captureError;
   bool _lastCaptureSuccess = false;
+
+  // Upload progress state
+  bool _isUploading = false;
+  String _uploadStatus = '';
+  double? _uploadProgress;
 
   bool get _isComplete => _currentStep >= _steps.length;
 
@@ -399,26 +405,57 @@ class _LearnScreenState extends State<LearnScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _capturedData.length >= 2 ? _saveProfile : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.statusGreen,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
+          if (_isUploading)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.secondaryBackground,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.primaryBrand.withValues(alpha: 0.2)),
               ),
-              child: const Text(
-                'Save Profile to Device',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold),
+              child: Column(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: _uploadProgress,
+                      backgroundColor: AppColors.primaryBackground,
+                      color: AppColors.primaryBrand,
+                      minHeight: 8,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    _uploadStatus,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _capturedData.length >= 2 ? _saveProfile : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.statusGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Save Profile to Device',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -491,11 +528,18 @@ class _LearnScreenState extends State<LearnScreen> {
   }
 
   void _saveProfile() async {
+    setState(() {
+      _isUploading = true;
+      _uploadStatus = 'Saving locally...';
+      _uploadProgress = 0.05;
+    });
+
     final bleService = Provider.of<BLEService>(context, listen: false);
     final acProvider = Provider.of<ACProvider>(context, listen: false);
+    final router = GoRouter.of(context);
 
     final profile = ACProfile(
-      id: Uuid().v4(),
+      id: const Uuid().v4(),
       name: widget.name,
       brand: widget.brand,
       model: widget.model,
@@ -519,43 +563,85 @@ class _LearnScreenState extends State<LearnScreen> {
     // 1. Save locally on phone
     await acProvider.addProfile(profile);
 
-    // 2. Send profile via Dynamic Config Flow
-    if (bleService.isConnected) {
-      final powerOnBtn = _capturedData['power_on'];
-      final powerOffBtn = _capturedData['power_off'];
+    setState(() {
+      _uploadStatus = 'Uploading to Device...';
+      _uploadProgress = 0.1;
+    });
 
-      if (powerOnBtn != null && powerOffBtn != null) {
+    // 2. Upload to ESP32 via Dynamic Config (VAR_START/VAR_CHUNK/VAR_END)
+    if (bleService.isConnected) {
+      // Extract timing from the power_on button (the primary reference)
+      final powerOn  = _capturedData['power_on'];
+      final powerOff = _capturedData['power_off'];
+
+      if (powerOn != null && powerOn.isEncoded) {
+        final configName = '${widget.brand}_${widget.model ?? "AC"}';
+
         final config = DynamicConfig(
-          acOnData: powerOnBtn.hexData ?? [],
-          acOffData: powerOffBtn.hexData ?? [],
-          irFreqKhz: 38, // Default standard frequency
-          hdrMark: powerOnBtn.hdrMark ?? 3200,
-          hdrSpace: powerOnBtn.hdrSpace ?? 3150,
-          bitMark: powerOnBtn.bitMark ?? 400,
-          oneSpace: powerOnBtn.oneSpace ?? 1150,
-          zeroSpace: powerOnBtn.zeroSpace ?? 400,
-          stopMark: powerOnBtn.bitMark ?? 400,
-          bitLength: powerOnBtn.bits ?? 96,
-          sendRepeat: 0,
+          acOnData:   powerOn.hexData ?? [],
+          acOffData:  powerOff?.hexData ?? powerOn.hexData ?? [],
+          irFreqKhz:  38,
+          hdrMark:    powerOn.hdrMark ?? 0,
+          hdrSpace:   powerOn.hdrSpace ?? 0,
+          bitMark:    powerOn.bitMark ?? 0,
+          oneSpace:   powerOn.oneSpace ?? 0,
+          zeroSpace:  powerOn.zeroSpace ?? 0,
+          stopMark:   powerOn.bitMark ?? 0,
+          bitLength:  powerOn.bits ?? 0,
+          sendRepeat: 3,
         );
 
-        final saved = await bleService.sendDynamicConfig(config, name: profile.name);
-        
+        final saved = await bleService.sendDynamicConfig(
+          config, 
+          name: configName,
+          onProgress: (progress) {
+            if (mounted) {
+              setState(() {
+                _uploadProgress = 0.1 + (progress * 0.7); // Progress from 0.1 to 0.8
+                _uploadStatus = 'Uploading to Device... ${(progress * 100).toInt()}%';
+              });
+            }
+          },
+        );
         if (saved) {
-          debugPrint('[App] Dynamic Config saved to ESP32');
-          
-          // Also save the regular JSON profile as backup/legacy if needed, but not required
-          // We won't call saveProfileToDevice here since ESP32 will use dyn_config.
+          debugPrint('[App] Dynamic config "$configName" uploaded to ESP32');
         } else {
-          debugPrint('[App] Warning: Dynamic Config ESP32 send failed');
+          debugPrint('[App] Warning: Dynamic config upload failed');
         }
       } else {
-        debugPrint('[App] Missing power_on or power_off data for Dynamic Config');
+        debugPrint('[App] power_on button is raw — Dynamic Config not sent');
       }
     } else {
       debugPrint('[App] Not connected — profile saved locally only');
     }
 
-    if (mounted) context.go('/');
+    setState(() {
+      _uploadStatus = 'Syncing to cloud...';
+      _uploadProgress = 0.85;
+    });
+
+    // 3. Sync full profile to cloud
+    if (acProvider.deviceId != 'UNKNOWN') {
+      final configName = '${widget.brand}_${widget.model ?? "AC"}';
+      debugPrint('[App] Synchronizing full profile to cloud for ${acProvider.deviceId}');
+      try {
+        await ApiService.syncDevice(
+          deviceId: acProvider.deviceId,
+          activeConfigName: configName,
+          configData: profile.toJson(),
+        );
+      } catch (e) {
+        debugPrint('[App] Cloud sync failed: $e');
+      }
+    }
+
+    setState(() {
+      _uploadStatus = 'Done!';
+      _uploadProgress = 1.0;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 600));
+
+    if (mounted) router.go('/');
   }
 }

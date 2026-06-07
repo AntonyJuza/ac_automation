@@ -25,3 +25,7 @@ class BLEConstants {
   static const String charStatusUuid = "12345678-1234-1234-1234-123456789002";
   static const String charIrDataUuid = "12345678-1234-1234-1234-123456789003";
 }
+
+class APIConstants {
+  static const String baseUrl = "http://192.168.1.47:3000/rest/v1";
+}
