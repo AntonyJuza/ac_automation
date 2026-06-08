@@ -295,4 +295,44 @@ class ACProvider with ChangeNotifier {
       return false;
     }
   }
+
+  Future<bool> startCloudLearn() async {
+    if (_deviceId == 'UNKNOWN') return false;
+    return await ApiService.startLearn(_deviceId);
+  }
+
+  Future<bool> stopCloudLearn() async {
+    if (_deviceId == 'UNKNOWN') return false;
+    return await ApiService.stopLearn(_deviceId);
+  }
+
+  Future<Map<String, dynamic>?> fetchCapturedIr() async {
+    if (_deviceId == 'UNKNOWN') return null;
+    return await ApiService.getCapturedIr(_deviceId);
+  }
+
+  Future<bool> setCloudTiming(int onTime, int offTime) async {
+    if (_deviceId == 'UNKNOWN') return false;
+    final success = await ApiService.setTiming(
+      deviceId: _deviceId,
+      onTime: onTime,
+      offTime: offTime,
+    );
+    if (success) {
+      _onTimeMs = onTime;
+      _offTimeMs = offTime;
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> setCloudTimeConfig(int gmtOffset, int dstOffset) async {
+    if (_deviceId == 'UNKNOWN') return false;
+    return await ApiService.setTimeConfig(
+      deviceId: _deviceId,
+      gmtOffset: gmtOffset,
+      dstOffset: dstOffset,
+    );
+  }
 }

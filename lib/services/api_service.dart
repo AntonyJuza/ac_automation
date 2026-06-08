@@ -188,5 +188,121 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<bool> startLearn(String deviceId) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/learn-start');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Start Learn Error: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> stopLearn(String deviceId) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/learn-stop');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Stop Learn Error: $e');
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> getCapturedIr(String deviceId) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/captured-ir');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.get(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Get Captured IR Error: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> setTiming({
+    required String deviceId,
+    required int onTime,
+    required int offTime,
+  }) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/timing');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'onTime': onTime,
+          'offTime': offTime,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Set Timing Error: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> setTimeConfig({
+    required String deviceId,
+    required int gmtOffset,
+    required int dstOffset,
+  }) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/time-config');
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({
+          'gmtOffset': gmtOffset,
+          'dstOffset': dstOffset,
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Set Time Config Error: $e');
+      return false;
+    }
+  }
 }
 

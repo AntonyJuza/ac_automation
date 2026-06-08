@@ -538,7 +538,9 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Timing Section ──────────────────────────────────────────────────────
 
   Widget _buildTimingSection(BLEService bleService, ACProvider acProvider) {
-    final showTimingControls = bleService.isConnected;
+    final isOnline = acProvider.selectedDevice?['online'] ?? false;
+    final showTimingControls = bleService.isConnected || isOnline;
+    
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -565,7 +567,22 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Icon(Icons.bluetooth_searching, size: 10, color: AppColors.textSecondary),
                       SizedBox(width: 4),
-                      Text('Read-Only (Cloud)', style: TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                      Text('Read-Only', style: TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                )
+              else if (!bleService.isConnected && isOnline)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryBrand.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.cloud, size: 10, color: AppColors.primaryBrand),
+                      SizedBox(width: 4),
+                      Text('Cloud Controls', style: TextStyle(fontSize: 10, color: AppColors.primaryBrand, fontWeight: FontWeight.w500)),
                     ],
                   ),
                 ),
@@ -619,23 +636,41 @@ class _HomeScreenState extends State<HomeScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   final onMs = (_onDelayMin * 60000).round();
                   final offMs = (_offDelayMin * 60000).round();
-                  bleService.setTiming(onMs, offMs);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Timing set: ON after ${_onDelayMin.toStringAsFixed(1)} min, OFF after ${_offDelayMin.toStringAsFixed(1)} min'),
-                      backgroundColor: AppColors.statusGreen,
-                    ),
-                  );
+                  
+                  bool success = false;
+                  String method = "";
+                  
+                  if (bleService.isConnected) {
+                    success = await bleService.setTiming(onMs, offMs);
+                    method = "Bluetooth";
+                  } else {
+                    success = await acProvider.setCloudTiming(onMs, offMs);
+                    method = "Cloud";
+                  }
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(success 
+                          ? 'Timing saved successfully via $method!' 
+                          : 'Failed to save timing settings.'),
+                        backgroundColor: success ? AppColors.statusGreen : AppColors.statusRed,
+                      ),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBrand,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                child: const Text('Save Timing over BLE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                child: Text(
+                  bleService.isConnected ? 'Save Timing over BLE' : 'Save Timing over Cloud',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
               ),
             )
           else
@@ -643,12 +678,123 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
                 child: Text(
-                  'Connect directly to device via Bluetooth to adjust timing limits.',
+                  'Connect to Bluetooth or go online to adjust timing limits.',
                   style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
                 ),
               ),
             ),
+          const Divider(height: 24),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.access_time, color: AppColors.primaryBrand),
+            title: const Text('Timezone (NTP Sync)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            subtitle: const Text('Configure UTC offset and Daylight Saving settings.', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+            trailing: TextButton(
+              onPressed: showTimingControls ? () => _showTimeConfigDialog(context, bleService, acProvider) : null,
+              child: const Text('Configure', style: TextStyle(fontSize: 12, color: AppColors.primaryBrand)),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  void _showTimeConfigDialog(BuildContext context, BLEService bleService, ACProvider acProvider) {
+    double gmtOffsetHours = 5.5;
+    bool isDst = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('NTP Timezone Config'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Configure the time offset for your AC controller to synchronize schedules accurately via NTP.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('UTC Offset (Hours):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  DropdownButton<double>(
+                    value: gmtOffsetHours,
+                    items: [
+                      -12.0, -11.0, -10.0, -9.0, -8.0, -7.0, -6.0, -5.0, -4.5, -4.0, -3.5, -3.0, -2.0, -1.0,
+                      0.0, 1.0, 2.0, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 5.75, 6.0, 6.5, 7.0, 8.0, 9.0, 9.5, 10.0, 11.0, 12.0, 13.0
+                    ].map((val) => DropdownMenuItem<double>(
+                      value: val,
+                      child: Text(val >= 0 ? '+$val' : '$val'),
+                    )).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => gmtOffsetHours = val);
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Daylight Saving Time (DST):', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  Switch(
+                    value: isDst,
+                    activeColor: AppColors.primaryBrand,
+                    onChanged: (val) {
+                      setDialogState(() => isDst = val);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final gmtOffsetSec = (gmtOffsetHours * 3600).round();
+                final dstOffsetSec = (isDst ? 3600 : 0);
+                
+                bool success = false;
+                String method = "";
+                
+                if (bleService.isConnected) {
+                  success = await bleService.sendCommand('SET_TIME_CONFIG:$gmtOffsetSec:$dstOffsetSec');
+                  method = "Bluetooth";
+                } else {
+                  success = await acProvider.setCloudTimeConfig(gmtOffsetSec, dstOffsetSec);
+                  method = "Cloud";
+                }
+
+                if (mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success 
+                        ? 'Timezone config saved successfully via $method!' 
+                        : 'Failed to save timezone config.'),
+                      backgroundColor: success ? AppColors.statusGreen : AppColors.statusRed,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryBrand,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
       ),
     );
   }

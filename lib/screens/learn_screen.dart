@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/models/ac_profile.dart';
@@ -66,7 +67,15 @@ class _LearnScreenState extends State<LearnScreen> {
   String _uploadStatus = '';
   double? _uploadProgress;
 
+  Timer? _cloudPollTimer;
+
   bool get _isComplete => _currentStep >= _steps.length;
+
+  @override
+  void dispose() {
+    _cloudPollTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -465,9 +474,13 @@ class _LearnScreenState extends State<LearnScreen> {
 
   void _startCapture() async {
     final bleService = Provider.of<BLEService>(context, listen: false);
+    final acProvider = Provider.of<ACProvider>(context, listen: false);
 
-    if (!bleService.isConnected) {
-      setState(() => _captureError = 'Not connected to device. Go back and connect first.');
+    final isBleConnected = bleService.isConnected;
+    final isCloudOnline = acProvider.selectedDevice?['online'] == true || acProvider.isWifiConnected;
+
+    if (!isBleConnected && !isCloudOnline) {
+      setState(() => _captureError = 'Device is offline. Connect via Bluetooth or check Cloud status.');
       return;
     }
 
@@ -477,34 +490,124 @@ class _LearnScreenState extends State<LearnScreen> {
       _lastCaptureSuccess = false;
     });
 
-    final irButton = await bleService.captureIRButton(
-      timeout: const Duration(seconds: 20),
-    );
+    if (isBleConnected) {
+      final irButton = await bleService.captureIRButton(
+        timeout: const Duration(seconds: 20),
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (irButton != null && irButton.isValid) {
-      final key = _steps[_currentStep].key;
-      setState(() {
-        _capturedData[key] = irButton;
-        _isCapturing = false;
-        _lastCaptureSuccess = true;
-        _captureError = null;
-      });
-      // Auto-advance after short delay so user sees success message
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) setState(() => _currentStep++);
+      if (irButton != null && irButton.isValid) {
+        final key = _steps[_currentStep].key;
+        setState(() {
+          _capturedData[key] = irButton;
+          _isCapturing = false;
+          _lastCaptureSuccess = true;
+          _captureError = null;
+        });
+        // Auto-advance after short delay so user sees success message
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) setState(() => _currentStep++);
+      } else {
+        setState(() {
+          _isCapturing = false;
+          _captureError = 'No signal received. Make sure the remote is pointing at the device and try again.';
+        });
+      }
     } else {
-      setState(() {
-        _isCapturing = false;
-        _captureError = 'No signal received. Make sure the remote is pointing at the device and try again.';
+      final started = await acProvider.startCloudLearn();
+      if (!started) {
+        if (mounted) {
+          setState(() {
+            _isCapturing = false;
+            _captureError = 'Failed to start learning mode via Cloud.';
+          });
+        }
+        return;
+      }
+
+      int pollCount = 0;
+      const maxPolls = 15; // 15 * 1.5s = 22.5s timeout (similar to 20s BLE timeout)
+      
+      _cloudPollTimer?.cancel();
+      _cloudPollTimer = Timer.periodic(const Duration(milliseconds: 1500), (timer) async {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          timer.cancel();
+          await acProvider.stopCloudLearn();
+          if (mounted) {
+            setState(() {
+              _isCapturing = false;
+              _captureError = 'Capture timed out. No signal received.';
+            });
+          }
+          return;
+        }
+
+        final res = await acProvider.fetchCapturedIr();
+        if (res != null && res['success'] == true && res['captured'] == true) {
+          timer.cancel();
+          await acProvider.stopCloudLearn();
+
+          final dataMap = res['data'] as Map<String, dynamic>;
+          final method = dataMap['method'] as String;
+          IRButton? button;
+          if (method == 'encoded') {
+            button = IRButton(
+              name: '',
+              method: IRMethod.encoded,
+              hexData: (dataMap['data'] as List?)?.map((e) => e.toString()).toList(),
+              bits: dataMap['bits'] as int?,
+              hdrMark: dataMap['hdr_mark'] as int?,
+              hdrSpace: dataMap['hdr_space'] as int?,
+              bitMark: dataMap['bit_mark'] as int?,
+              oneSpace: dataMap['one_space'] as int?,
+              zeroSpace: dataMap['zero_space'] as int?,
+            );
+          } else if (method == 'raw') {
+            button = IRButton(
+              name: '',
+              method: IRMethod.raw,
+              rawData: (dataMap['data'] as List?)?.map((e) => int.tryParse(e.toString()) ?? 0).toList(),
+            );
+          }
+
+          if (mounted) {
+            if (button != null && button.isValid) {
+              final key = _steps[_currentStep].key;
+              setState(() {
+                _capturedData[key] = button!;
+                _isCapturing = false;
+                _lastCaptureSuccess = true;
+                _captureError = null;
+              });
+              await Future.delayed(const Duration(milliseconds: 800));
+              if (mounted) setState(() => _currentStep++);
+            } else {
+              setState(() {
+                _isCapturing = false;
+                _captureError = 'Received invalid IR signal format from Cloud.';
+              });
+            }
+          }
+        }
       });
     }
   }
 
-  void _cancelCapture() {
+  void _cancelCapture() async {
     final bleService = Provider.of<BLEService>(context, listen: false);
-    bleService.stopLearnMode();
+    final acProvider = Provider.of<ACProvider>(context, listen: false);
+
+    _cloudPollTimer?.cancel();
+    _cloudPollTimer = null;
+
+    if (bleService.isConnected) {
+      await bleService.stopLearnMode();
+    } else {
+      await acProvider.stopCloudLearn();
+    }
+
     setState(() {
       _isCapturing = false;
       _captureError = null;
