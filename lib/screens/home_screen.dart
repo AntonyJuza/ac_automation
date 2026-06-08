@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/widgets/ble_device_tile.dart';
+import 'package:ac_automation/models/ac_profile.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _navIndex = 0;
+  Timer? _pollTimer;
 
   // Timing controls (in minutes for UI, sent as ms)
   double _onDelayMin = 1.0;
@@ -30,10 +33,27 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final bleService = Provider.of<BLEService>(context, listen: false);
       final acProvider = Provider.of<ACProvider>(context, listen: false);
+      
       bleService.statusStream.listen((msg) {
         if (mounted) acProvider.updateFromStatus(msg);
       });
+
+      // Initial cloud devices fetch
+      acProvider.fetchCloudDevices();
+
+      // Poll cloud devices status every 8 seconds
+      _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+        if (mounted && acProvider.cloudDevices.isNotEmpty) {
+          acProvider.fetchCloudDevices();
+        }
+      });
     });
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -55,63 +75,226 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: AppColors.secondaryBackground,
       appBar: _buildAppBar(bleService, acProvider),
-      body: bleService.isConnected
-          ? SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: RefreshIndicator(
+        onRefresh: () => acProvider.fetchCloudDevices(),
+        color: AppColors.primaryBrand,
+        child: acProvider.isFetchingDevices && acProvider.cloudDevices.isEmpty
+            ? const Center(child: CircularProgressIndicator())
+            : acProvider.cloudDevices.isEmpty
+                ? _buildNoDevicesScreen(context, bleService, acProvider)
+                : _buildDeviceDashboard(context, bleService, acProvider, profile),
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  // ── No Devices Screen ───────────────────────────────────────────────────
+
+  Widget _buildNoDevicesScreen(BuildContext context, BLEService bleService, ACProvider acProvider) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+      children: [
+        const SizedBox(height: 40),
+        Icon(
+          Icons.qr_code_scanner_rounded,
+          size: 90,
+          color: AppColors.primaryBrand.withValues(alpha: 0.3),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'No AC Units Found',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Claim your AC controller via QR code, or set up a brand new device using Bluetooth.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textSecondary, fontSize: 15, height: 1.4),
+        ),
+        const SizedBox(height: 48),
+        ElevatedButton.icon(
+          onPressed: () => _showQRClaimDialog(context, acProvider),
+          icon: const Icon(Icons.qr_code_scanner, color: Colors.white),
+          label: const Text(
+            'Scan QR Code / Claim Device',
+            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primaryBrand,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            elevation: 2,
+          ),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () => _showScanSheet(context, bleService),
+          icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand),
+          label: const Text(
+            'Provision New Device (BLE)',
+            style: TextStyle(color: AppColors.primaryBrand, fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            side: const BorderSide(color: AppColors.primaryBrand, width: 1.5),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Device Dashboard ────────────────────────────────────────────────────
+
+  Widget _buildDeviceDashboard(BuildContext context, BLEService bleService, ACProvider acProvider, ACProfile? profile) {
+    final device = acProvider.selectedDevice;
+    final deviceName = device?['deviceName'] ?? 'Living Room AC';
+
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildDeviceSelector(acProvider),
+          const SizedBox(height: 12),
+          _buildHeroSection(
+            acProvider.configName.isNotEmpty 
+                ? acProvider.configName 
+                : (profile?.name ?? deviceName),
+            acProvider,
+          ),
+          const SizedBox(height: 16),
+          _buildPowerBanner(acProvider, bleService),
+          const SizedBox(height: 16),
+          _buildTimingSection(bleService, acProvider),
+          const SizedBox(height: 24),
+          _buildControlActionsRow(context, bleService, acProvider),
+        ],
+      ),
+    );
+  }
+
+  // ── Device Selector ─────────────────────────────────────────────────────
+
+  Widget _buildDeviceSelector(ACProvider acProvider) {
+    if (acProvider.cloudDevices.length <= 1) {
+      final deviceId = acProvider.selectedDevice?['deviceId'] ?? '';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: Text(
+            'Device ID: $deviceId',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBackground,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [AppStyles.softShadow],
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<Map<String, dynamic>>(
+          value: acProvider.selectedDevice,
+          isExpanded: true,
+          icon: const Icon(Icons.keyboard_arrow_down, color: AppColors.primaryBrand),
+          items: acProvider.cloudDevices.map((device) {
+            final name = device['deviceName'] ?? 'Unnamed Device';
+            final id = device['deviceId'] ?? '';
+            final isOnline = device['online'] ?? false;
+            return DropdownMenuItem<Map<String, dynamic>>(
+              value: device,
+              child: Row(
                 children: [
-                  _buildHeroSection(
-                    acProvider.configName.isNotEmpty 
-                        ? acProvider.configName 
-                        : (profile?.name ?? 'Living Room AC'),
-                    acProvider,
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: isOnline ? AppColors.statusGreen : AppColors.statusRed,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                  const SizedBox(height: 16),
-                  _buildPowerBanner(acProvider, bleService),
-                  const SizedBox(height: 16),
-                  _buildTimingSection(bleService),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => _showAddACDialog(context, bleService),
-                        icon: const Icon(Icons.add_circle_outline, color: AppColors.primaryBrand, size: 18),
-                        label: const Text(
-                          'Add New AC',
-                          style: TextStyle(
-                            color: AppColors.primaryBrand,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$name ($id)',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
                       ),
-                      TextButton.icon(
-                        onPressed: () => _showScanSheet(context, bleService),
-                        icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand, size: 18),
-                        label: const Text(
-                          'Manage Devices',
-                          style: TextStyle(
-                            color: AppColors.primaryBrand,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
-            )
-          : _buildConnectPrompt(context, bleService),
-      bottomNavigationBar: _buildBottomNav(),
+            );
+          }).toList(),
+          onChanged: (device) {
+            if (device != null) {
+              acProvider.selectDevice(device);
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  // ── Control Actions Row ─────────────────────────────────────────────────
+
+  Widget _buildControlActionsRow(BuildContext context, BLEService bleService, ACProvider acProvider) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        TextButton.icon(
+          onPressed: () => _showQRClaimDialog(context, acProvider),
+          icon: const Icon(Icons.qr_code, color: AppColors.primaryBrand, size: 18),
+          label: const Text(
+            'Claim Device',
+            style: TextStyle(
+              color: AppColors.primaryBrand,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () => _showScanSheet(context, bleService),
+          icon: const Icon(Icons.bluetooth, color: AppColors.primaryBrand, size: 18),
+          label: const Text(
+            'Provision BLE',
+            style: TextStyle(
+              color: AppColors.primaryBrand,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   // ── App Bar ──────────────────────────────────────────────────────────────
 
   PreferredSizeWidget _buildAppBar(BLEService bleService, ACProvider acProvider) {
+    final isOnline = acProvider.selectedDevice?['online'] ?? false;
     return AppBar(
       title: const Text(
         'AC Control',
@@ -122,6 +305,46 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
       actions: [
+        // Cloud Status Badge
+        if (acProvider.selectedDevice != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: isOnline ? AppColors.statusGreen : AppColors.statusRed,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      isOnline ? Icons.cloud : Icons.cloud_off,
+                      size: 16,
+                      color: isOnline ? AppColors.primaryBrand : AppColors.textSecondary,
+                    ),
+                  ],
+                ),
+                Text(
+                  isOnline ? 'CLOUD ACTIVE' : 'CLOUD OFFLINE',
+                  style: TextStyle(
+                    fontSize: 8,
+                    color: isOnline ? AppColors.primaryBrand : AppColors.textSecondary,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Wi-Fi Config (if BLE connected)
         if (bleService.isConnected)
           IconButton(
             icon: Icon(
@@ -132,7 +355,8 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => _showWifiConfigDialog(context, bleService),
             tooltip: acProvider.isWifiConnected ? 'Wi-Fi Connected' : 'Wi-Fi Disconnected',
           ),
-        // Connection status
+
+        // Bluetooth connection indicator
         if (bleService.isConnected)
           Padding(
             padding: const EdgeInsets.only(right: 16),
@@ -167,25 +391,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-        // Avatar
-        // Padding(
-        //   padding: const EdgeInsets.only(right: 12),
-        //   child: GestureDetector(
-        //     onTap: () {},
-        //     child: CircleAvatar(
-        //       radius: 17,
-        //       backgroundColor: AppColors.textPrimary,
-        //       child: const Text(
-        //         'SJ',
-        //         style: TextStyle(
-        //           color: Colors.white,
-        //           fontSize: 11,
-        //           fontWeight: FontWeight.bold,
-        //         ),
-        //       ),
-        //     ),
-        //   ),
-        // ),
       ],
     );
   }
@@ -274,6 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── Power Banner ─────────────────────────────────────────────────────────
 
   Widget _buildPowerBanner(ACProvider acProvider, BLEService bleService) {
+    final isOnline = acProvider.selectedDevice?['online'] ?? false;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
@@ -284,39 +490,86 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            acProvider.isAcOn ? 'AC IS ON' : 'AC IS OFF',
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: acProvider.isAcOn ? AppColors.statusGreen : AppColors.textSecondary,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  acProvider.isAcOn ? 'AC IS ON' : 'AC IS OFF',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: acProvider.isAcOn ? AppColors.statusGreen : AppColors.textSecondary,
+                  ),
+                ),
+                if (!isOnline)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Text(
+                      'Unit is Offline (Cloud control unavailable)',
+                      style: TextStyle(fontSize: 10, color: AppColors.statusRed, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+              ],
             ),
           ),
           CupertinoSwitch(
             value: acProvider.isAcOn,
             activeTrackColor: AppColors.primaryBrand,
-            onChanged: (val) {
-              // The switch is a passive indicator since the ESP's radar controls it!
-            },
+            onChanged: !isOnline
+                ? null
+                : (val) async {
+                    final success = await acProvider.controlCloudDevicePower(val);
+                    if (mounted && !success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Failed to update power state.'),
+                          backgroundColor: AppColors.statusRed,
+                        ),
+                      );
+                    }
+                  },
           ),
         ],
       ),
     );
   }
+
   // ── Timing Section ──────────────────────────────────────────────────────
 
-  Widget _buildTimingSection(BLEService bleService) {
+  Widget _buildTimingSection(BLEService bleService, ACProvider acProvider) {
+    final showTimingControls = bleService.isConnected;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Auto Timing',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Auto Timing Config',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              if (!showTimingControls)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.textSecondary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.bluetooth_searching, size: 10, color: AppColors.textSecondary),
+                      SizedBox(width: 4),
+                      Text('Read-Only (Cloud)', style: TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           Row(
@@ -328,7 +581,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   min: 0.5, max: 30, divisions: 59,
                   label: '${_onDelayMin.toStringAsFixed(1)} min',
                   activeColor: AppColors.primaryBrand,
-                  onChanged: (v) => setState(() => _onDelayMin = v),
+                  onChanged: showTimingControls ? (v) => setState(() => _onDelayMin = v) : null,
                 ),
               ),
               SizedBox(
@@ -349,7 +602,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   min: 0.5, max: 30, divisions: 59,
                   label: '${_offDelayMin.toStringAsFixed(1)} min',
                   activeColor: AppColors.statusRed,
-                  onChanged: (v) => setState(() => _offDelayMin = v),
+                  onChanged: showTimingControls ? (v) => setState(() => _offDelayMin = v) : null,
                 ),
               ),
               SizedBox(
@@ -362,29 +615,183 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                final onMs = (_onDelayMin * 60000).round();
-                final offMs = (_offDelayMin * 60000).round();
-                bleService.setTiming(onMs, offMs);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Timing set: ON after ${_onDelayMin.toStringAsFixed(1)} min, OFF after ${_offDelayMin.toStringAsFixed(1)} min'),
-                    backgroundColor: AppColors.statusGreen,
+          if (showTimingControls)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  final onMs = (_onDelayMin * 60000).round();
+                  final offMs = (_offDelayMin * 60000).round();
+                  bleService.setTiming(onMs, offMs);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Timing set: ON after ${_onDelayMin.toStringAsFixed(1)} min, OFF after ${_offDelayMin.toStringAsFixed(1)} min'),
+                      backgroundColor: AppColors.statusGreen,
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBrand,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                child: const Text('Save Timing over BLE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              ),
+            )
+          else
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'Connect directly to device via Bluetooth to adjust timing limits.',
+                  style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ── Claim QR Dialog Simulation ──────────────────────────────────────────
+
+  void _showQRClaimDialog(BuildContext context, ACProvider acProvider) {
+    final devIdController = TextEditingController();
+    bool isClaiming = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Claim AC Unit'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Simulated Scanner Box
+                Container(
+                  height: 140,
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.primaryBrand.withValues(alpha: 0.3), width: 2),
                   ),
-                );
-              },
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      const Icon(Icons.qr_code_scanner, size: 60, color: AppColors.textSecondary),
+                      // Scanner Laser Simulation Line
+                      Positioned(
+                        top: 50,
+                        left: 20,
+                        right: 20,
+                        child: Container(
+                          height: 2,
+                          color: AppColors.statusRed,
+                        ),
+                      ),
+                      const Positioned(
+                        bottom: 12,
+                        child: Text(
+                          '[Camera Scanner Simulator]',
+                          style: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Enter the Device ID found on your AC Automation controller\'s label:',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: devIdController,
+                  decoration: InputDecoration(
+                    labelText: 'Device ID (e.g. AC_1CC3ABC25754)',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    filled: true,
+                    fillColor: AppColors.secondaryBackground,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  textCapitalization: TextCapitalization.characters,
+                ),
+                const SizedBox(height: 16),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Simulated scan shortcuts:',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        devIdController.text = 'AC_1CC3ABC25754';
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('AC_1CC3ABC25754', style: TextStyle(fontSize: 11)),
+                    ),
+                    OutlinedButton(
+                      onPressed: () {
+                        devIdController.text = 'AC_TEST_UNIT';
+                      },
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      child: const Text('AC_TEST_UNIT', style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isClaiming
+                  ? null
+                  : () async {
+                      final val = devIdController.text.trim();
+                      if (val.isEmpty) return;
+                      
+                      setDialogState(() => isClaiming = true);
+                      final success = await acProvider.claimCloudDevice(val);
+                      setDialogState(() => isClaiming = false);
+
+                      if (mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(success ? 'Device claimed successfully!' : 'Failed to claim device.'),
+                            backgroundColor: success ? AppColors.statusGreen : AppColors.statusRed,
+                          ),
+                        );
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primaryBrand,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              child: const Text('Save Timing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+              child: isClaiming
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Claim Device', style: TextStyle(color: Colors.white)),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -498,54 +905,6 @@ class _HomeScreenState extends State<HomeScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Save & Connect', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ── Connect Prompt ────────────────────────────────────────────────────────
-
-  Widget _buildConnectPrompt(BuildContext context, BLEService bleService) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.bluetooth_searching,
-            size: 80,
-            color: AppColors.primaryBrand.withValues(alpha: 0.35),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'No Device Connected',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            'Connect to your AC Automation\ndevice to get started.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 15),
-          ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: () => _showScanSheet(context, bleService),
-            icon: const Icon(Icons.bluetooth, color: Colors.white),
-            label: const Text(
-              'Scan for Devices',
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryBrand,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14)),
-            ),
           ),
         ],
       ),

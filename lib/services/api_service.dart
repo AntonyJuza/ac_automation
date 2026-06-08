@@ -74,5 +74,119 @@ class ApiService {
       return null;
     }
   }
+
+  static Future<List<Map<String, dynamic>>?> getUserDevices() async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices');
+      debugPrint('Fetching user devices: $url');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.get(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        if (decoded['success'] == true) {
+          final List<dynamic> list = decoded['data'] ?? [];
+          return list.map((item) => item as Map<String, dynamic>).toList();
+        }
+      }
+      debugPrint('Get User Devices failed: HTTP ${response.statusCode} - ${response.body}');
+      return null;
+    } catch (e) {
+      debugPrint('Get User Devices Error: $e');
+      return null;
+    }
+  }
+
+  static Future<List<Map<String, dynamic>>?> getEvents() async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/events');
+      debugPrint('Fetching events: $url');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.get(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final List<dynamic> list = jsonDecode(response.body);
+        return list.map((item) => item as Map<String, dynamic>).toList();
+      }
+      debugPrint('Get Events failed: HTTP ${response.statusCode}');
+      return null;
+    } catch (e) {
+      debugPrint('Get Events Error: $e');
+      return null;
+    }
+  }
+
+  static Future<bool> claimDevice(String deviceId) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/claim');
+      debugPrint('Claiming device: $url | ID: $deviceId');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'deviceId': deviceId}),
+      );
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final decoded = jsonDecode(response.body);
+        return decoded['success'] == true;
+      }
+      debugPrint('Claim device failed: HTTP ${response.statusCode}');
+      return false;
+    } catch (e) {
+      debugPrint('Claim Device Error: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> toggleDevicePower(String deviceId, bool turnOn) async {
+    try {
+      final endpoint = turnOn ? 'power-on' : 'power-off';
+      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/$endpoint');
+      debugPrint('Toggling power ($turnOn) via URL: $url');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded['success'] == true;
+      }
+      debugPrint('Toggle power failed: HTTP ${response.statusCode}');
+      return false;
+    } catch (e) {
+      debugPrint('Toggle Power Error: $e');
+      return false;
+    }
+  }
 }
 

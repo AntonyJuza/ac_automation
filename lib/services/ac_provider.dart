@@ -16,6 +16,10 @@ class ACProvider with ChangeNotifier {
   String _deviceId = 'UNKNOWN';
   bool _isWifiConnected = false;
 
+  List<Map<String, dynamic>> _cloudDevices = [];
+  bool _isFetchingDevices = false;
+  Map<String, dynamic>? _selectedDevice;
+
   List<ACProfile> get profiles => _profiles;
   bool get isPresenceDetected => _isPresenceDetected;
   String get presenceStatus => _presenceStatus;
@@ -26,6 +30,10 @@ class ACProvider with ChangeNotifier {
   int get offTimeMs => _offTimeMs;
   String get deviceId => _deviceId;
   bool get isWifiConnected => _isWifiConnected;
+
+  List<Map<String, dynamic>> get cloudDevices => _cloudDevices;
+  bool get isFetchingDevices => _isFetchingDevices;
+  Map<String, dynamic>? get selectedDevice => _selectedDevice;
 
   ACProvider() {
     _loadProfiles();
@@ -120,6 +128,8 @@ class ACProvider with ChangeNotifier {
         if (_deviceId != id) {
           _deviceId = id;
           _syncWithCloud();
+          // Auto claim when device ID is discovered in BLE setup
+          claimCloudDevice(id);
         }
       }
       if (part.startsWith('WIFI=')) {
@@ -150,6 +160,139 @@ class ACProvider with ChangeNotifier {
        } catch(e) {
          debugPrint('[App] Error parsing cloud profile: $e');
        }
+    }
+  }
+
+  void selectDevice(Map<String, dynamic>? device) {
+    _selectedDevice = device;
+    if (device != null) {
+      _deviceId = device['deviceId'] ?? 'UNKNOWN';
+      _isAcOn = device['powerState'] ?? false;
+      _isWifiConnected = device['online'] ?? false;
+      _configName = device['activeConfigName'] ?? 'NONE';
+      
+      if (device['configData'] != null) {
+         try {
+           final profileMap = device['configData'];
+           final profile = ACProfile.fromJson(profileMap);
+           bool exists = _profiles.any((p) => p.id == profile.id || p.name == profile.name);
+           if (!exists) {
+             addProfile(profile);
+           }
+         } catch(e) {
+           debugPrint('[App] Error parsing configData from cloud: $e');
+         }
+      }
+    } else {
+      _deviceId = 'UNKNOWN';
+      _isAcOn = false;
+      _isWifiConnected = false;
+      _configName = 'NONE';
+    }
+    notifyListeners();
+  }
+
+  Future<void> fetchCloudDevices() async {
+    if (_isFetchingDevices) return;
+    _isFetchingDevices = true;
+    notifyListeners();
+
+    try {
+      final devices = await ApiService.getUserDevices();
+      if (devices != null) {
+        _cloudDevices = devices;
+        
+        if (_selectedDevice != null) {
+          final updated = _cloudDevices.firstWhere(
+            (d) => d['deviceId'] == _selectedDevice!['deviceId'],
+            orElse: () => <String, dynamic>{},
+          );
+          if (updated.isNotEmpty) {
+            selectDevice(updated);
+          } else {
+            selectDevice(_cloudDevices.isNotEmpty ? _cloudDevices.first : null);
+          }
+        } else if (_cloudDevices.isNotEmpty) {
+          selectDevice(_cloudDevices.first);
+        } else {
+          selectDevice(null);
+        }
+
+        await _fetchLatestPresenceForSelectedDevice();
+      }
+    } catch (e) {
+      debugPrint('Error fetching cloud devices: $e');
+    } finally {
+      _isFetchingDevices = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _fetchLatestPresenceForSelectedDevice() async {
+    if (_selectedDevice == null) return;
+    final devId = _selectedDevice!['deviceId'];
+    try {
+      final events = await ApiService.getEvents();
+      if (events != null && events.isNotEmpty) {
+        final devEvent = events.firstWhere(
+          (e) => e['device_id'] == devId,
+          orElse: () => <String, dynamic>{},
+        );
+        if (devEvent.isNotEmpty) {
+          final presenceVal = devEvent['presence'];
+          final eventName = devEvent['event'] ?? '';
+          
+          if (presenceVal == true || presenceVal == 1) {
+            _isPresenceDetected = true;
+            _presenceStatus = 'YES';
+          } else {
+            _isPresenceDetected = false;
+            _presenceStatus = 'NONE';
+          }
+          
+          if (eventName == 'AC_ON') {
+            _isAcOn = true;
+          } else if (eventName == 'AC_OFF') {
+            _isAcOn = false;
+          }
+        }
+      }
+    } catch(e) {
+      debugPrint('Error fetching latest presence: $e');
+    }
+  }
+
+  Future<bool> claimCloudDevice(String deviceId) async {
+    final success = await ApiService.claimDevice(deviceId);
+    if (success) {
+      await fetchCloudDevices();
+      final claimed = _cloudDevices.firstWhere(
+        (d) => d['deviceId'] == deviceId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (claimed.isNotEmpty) {
+        selectDevice(claimed);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  Future<bool> controlCloudDevicePower(bool turnOn) async {
+    if (_selectedDevice == null) return false;
+    final devId = _selectedDevice!['deviceId'];
+    
+    _isAcOn = turnOn;
+    notifyListeners();
+
+    final success = await ApiService.toggleDevicePower(devId, turnOn);
+    if (success) {
+      await fetchCloudDevices();
+      return true;
+    } else {
+      _isAcOn = !turnOn;
+      notifyListeners();
+      return false;
     }
   }
 }
