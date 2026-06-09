@@ -95,7 +95,7 @@ class ACAutomationApp extends StatelessWidget {
           );
 
           return MaterialApp.router(
-            title: 'AC Automation',
+            title: 'AVIO',
             debugShowCheckedModeBanner: false,
             theme: ThemeData(
               useMaterial3: true,

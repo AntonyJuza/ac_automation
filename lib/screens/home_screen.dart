@@ -297,7 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final isOnline = acProvider.selectedDevice?['online'] ?? false;
     return AppBar(
       title: const Text(
-        'AC Control',
+        'AVIO',
         style: TextStyle(
           color: AppColors.textPrimary,
           fontSize: 18,
@@ -850,7 +850,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(height: 20),
                 const Text(
-                  'Enter the Device ID found on your AC Automation controller\'s label:',
+                  'Enter the Device ID found on your AVIO controller\'s label:',
                   style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 12),

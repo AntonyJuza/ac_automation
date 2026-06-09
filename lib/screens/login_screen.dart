@@ -64,20 +64,23 @@ class _LoginScreenState extends State<LoginScreen> {
     const Color textMutedColor = Color(0xFF64748B); 
     const Color accentBlue = Color(0xFF1763D6); 
 
-    const String snowflakeSvg = '''
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <path d="m10 20-1.25-2.5L6 18" />
-  <path d="M10 4 8.75 6.5 6 6" />
-  <path d="m14 20 1.25-2.5L18 18" />
-  <path d="m14 4 1.25 2.5L18 6" />
-  <path d="m17 21-3-6h-4" />
-  <path d="m17 3-3 6 1.5 3" />
-  <path d="M2 12h6.5L10 9" />
-  <path d="m20 10-1.5 2 1.5 2" />
-  <path d="M22 12h-6.5L14 15" />
-  <path d="m4 10 1.5 2L4 14" />
-  <path d="m7 21 3-6-1.5-3" />
-  <path d="m7 3 3 6h4" />
+    const String avioSvg = '''
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="-10 -10 48 48">
+  <rect x="-3" y="-3" width="30" height="30" rx="5" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="0.5" />
+  <g fill="none" stroke="#0066FF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m10 20-1.25-2.5L6 18"/>
+    <path d="M10 4 8.75 6.5 6 6"/>
+    <path d="m14 20 1.25-2.5L18 18"/>
+    <path d="m14 4 1.25 2.5L18 6"/>
+    <path d="m17 21-3-6h-4"/>
+    <path d="m17 3-3 6 1.5 3"/>
+    <path d="M2 12h6.5L10 9"/>
+    <path d="m20 10-1.5 2 1.5 2"/>
+    <path d="M22 12h-6.5L14 15"/>
+    <path d="m4 10 1.5 2L4 14"/>
+    <path d="m7 21 3-6-1.5-3"/>
+    <path d="m7 3 3 6h4"/>
+  </g>
 </svg>
 ''';
 
@@ -107,29 +110,21 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
-                        Container(
+                        SizedBox(
                           width: 40,
                           height: 40,
-                          decoration: BoxDecoration(
-                            color: accentBlue,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Center(
-                            child: SvgPicture.string(
-                              snowflakeSvg,
-                              width: 24,
-                              height: 24,
-                              colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-                            ),
+                          child: SvgPicture.string(
+                            avioSvg,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
                         const Text(
-                          'AC Control',
+                          'AVIO',
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                             color: textColorBrand,
+                            letterSpacing: -0.5,
                           ),
                         ),
                       ],
