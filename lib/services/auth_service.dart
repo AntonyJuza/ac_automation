@@ -52,6 +52,9 @@ class AuthService with ChangeNotifier {
         }),
       );
 
+      print("LOGIN STATUS: ${response.statusCode}");
+      print("LOGIN RESPONSE: ${response.body}");
+
       final data = json.decode(response.body);
       if (response.statusCode == 200 && data['success'] == true) {
         _token = data['token'];
@@ -76,7 +79,7 @@ class AuthService with ChangeNotifier {
     }
   }
 
-  Future<bool> register(String name, String email, String password) async {
+  Future<bool> register(String username, String email, String password) async {
     _isLoading = true;
     notifyListeners();
 
@@ -86,11 +89,14 @@ class AuthService with ChangeNotifier {
         url,
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'name': name,
+          'username': username,
           'email': email,
           'password': password,
         }),
       );
+
+      print("REGISTER STATUS: ${response.statusCode}");
+      print("REGISTER RESPONSE: ${response.body}");
 
       final data = json.decode(response.body);
       if (response.statusCode == 201 && data['success'] == true) {
