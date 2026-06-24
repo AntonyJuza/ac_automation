@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/services/ac_provider.dart';
+import 'package:ac_automation/services/auth_service.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/widgets/ble_device_tile.dart';
 import 'package:ac_automation/models/ac_profile.dart';
@@ -391,6 +392,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+        IconButton(
+          icon: const Icon(Icons.logout, color: AppColors.textSecondary),
+          onPressed: () async {
+            await Provider.of<AuthService>(context, listen: false).logout();
+          },
+          tooltip: 'Logout',
+        ),
       ],
     );
   }

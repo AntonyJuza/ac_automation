@@ -13,6 +13,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'package:ac_automation/services/auth_service.dart';
 import 'package:ac_automation/services/ac_provider.dart';
+import 'package:ac_automation/services/api_service.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 
@@ -30,6 +31,7 @@ class ACAutomationApp extends StatelessWidget {
       child: Builder(
         builder: (context) {
           final authService = Provider.of<AuthService>(context, listen: false);
+          ApiService.onUnauthorized = authService.logout;
 
           final GoRouter router = GoRouter(
             initialLocation: '/',

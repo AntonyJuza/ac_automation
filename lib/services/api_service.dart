@@ -5,6 +5,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ac_automation/utils/constants.dart';
 
 class ApiService {
+  static void Function()? onUnauthorized;
+
+  static void _checkResponse(http.Response response) {
+    if (response.statusCode == 401) {
+      debugPrint('[ApiService] Unauthorized (401) response received, triggering onUnauthorized callback');
+      onUnauthorized?.call();
+    }
+  }
+
   static Future<bool> syncDevice({
     required String deviceId,
     String? deviceName,
@@ -34,6 +43,7 @@ class ApiService {
       );
       
       debugPrint('[Cloud] Response: ${response.statusCode} - ${response.body}');
+      _checkResponse(response);
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         debugPrint('[Cloud] Sync successful!');
@@ -63,6 +73,7 @@ class ApiService {
         },
       );
       
+      _checkResponse(response);
       if (response.statusCode == 200) {
         debugPrint('Cloud fetch successful!');
         return jsonDecode(response.body);
@@ -90,6 +101,7 @@ class ApiService {
         },
       );
       
+      _checkResponse(response);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         if (decoded['success'] == true) {
@@ -120,6 +132,7 @@ class ApiService {
         },
       );
       
+      _checkResponse(response);
       if (response.statusCode == 200) {
         final List<dynamic> list = jsonDecode(response.body);
         return list.map((item) => item as Map<String, dynamic>).toList();
@@ -149,6 +162,7 @@ class ApiService {
         body: jsonEncode({'deviceId': deviceId}),
       );
       
+      _checkResponse(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = jsonDecode(response.body);
         return decoded['success'] == true;
@@ -177,6 +191,7 @@ class ApiService {
         },
       );
       
+      _checkResponse(response);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
         return decoded['success'] == true;
@@ -201,6 +216,7 @@ class ApiService {
           if (token != null) 'Authorization': 'Bearer $token',
         },
       );
+      _checkResponse(response);
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Start Learn Error: $e');
@@ -220,6 +236,7 @@ class ApiService {
           if (token != null) 'Authorization': 'Bearer $token',
         },
       );
+      _checkResponse(response);
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Stop Learn Error: $e');
@@ -239,6 +256,7 @@ class ApiService {
           if (token != null) 'Authorization': 'Bearer $token',
         },
       );
+      _checkResponse(response);
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -270,6 +288,7 @@ class ApiService {
           'offTime': offTime,
         }),
       );
+      _checkResponse(response);
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Set Timing Error: $e');
@@ -298,6 +317,7 @@ class ApiService {
           'dstOffset': dstOffset,
         }),
       );
+      _checkResponse(response);
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Set Time Config Error: $e');
@@ -305,4 +325,3 @@ class ApiService {
     }
   }
 }
-
