@@ -46,10 +46,7 @@ class AuthService with ChangeNotifier {
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'email': email,
-          'password': password,
-        }),
+        body: json.encode({'email': email, 'password': password}),
       );
 
       print("LOGIN STATUS: ${response.statusCode}");
@@ -79,8 +76,40 @@ class AuthService with ChangeNotifier {
     }
   }
 
+  Future<bool> checkEmail(String email) async {
+    try {
+      final url = Uri.parse('${APIConstants.baseUrl}/auth/check-email');
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'email': email.trim().toLowerCase()}),
+          )
+          .timeout(const Duration(seconds: 4));
+
+      final contentType = response.headers['content-type'] ?? '';
+      if (response.statusCode == 404 ||
+          !contentType.contains('application/json')) {
+        debugPrint(
+          '[AuthService] check-email endpoint not found or returned non-JSON. Falling back to login flow.',
+        );
+        return true; // Fallback: assume email exists (login flow)
+      }
+
+      final data = json.decode(response.body);
+      if (response.statusCode == 200) {
+        return data['exists'] == true;
+      }
+      return true; // fallback
+    } catch (e) {
+      debugPrint('Error checking email, falling back to login: $e');
+      return true; // Fallback: assume email exists (login flow)
+    }
+  }
+
   Future<bool> register(String username, String email, String password) async {
     _isLoading = true;
+
     notifyListeners();
 
     try {
@@ -149,7 +178,9 @@ class AuthService with ChangeNotifier {
       if (response.statusCode == 200 && data['success'] == true) {
         // Update user's devices locally
         if (_currentUser != null) {
-          final List<dynamic> devices = List.from(_currentUser!['devices'] ?? []);
+          final List<dynamic> devices = List.from(
+            _currentUser!['devices'] ?? [],
+          );
           if (!devices.contains(deviceId)) {
             devices.add(deviceId);
             _currentUser!['devices'] = devices;

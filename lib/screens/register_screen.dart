@@ -63,10 +63,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const Color inputFillColor = Color(0xFFEEF2F6); 
-    const Color textColorBrand = Color(0xFF0E1A2B); 
-    const Color textMutedColor = Color(0xFF64748B); 
-    const Color accentBlue = Color(0xFF1763D6); 
+    const Color inputFillColor = Color(0xFFEEF2F6);
+    const Color textColorBrand = Color(0xFF0E1A2B);
+    const Color textMutedColor = Color(0xFF64748B);
+    const Color accentBlue = Color(0xFF1763D6);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF3F6FA),
@@ -95,7 +95,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.arrow_back, color: textMutedColor, size: 16),
+                            Icon(
+                              Icons.arrow_back,
+                              color: textMutedColor,
+                              size: 16,
+                            ),
                             SizedBox(width: 8),
                             Text(
                               'Back',
@@ -138,7 +142,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         decoration: BoxDecoration(
                           color: AppColors.statusRed.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.statusRed.withOpacity(0.2)),
+                          border: Border.all(
+                            color: AppColors.statusRed.withOpacity(0.2),
+                          ),
                         ),
                         child: Text(
                           _errorMessage!,
@@ -184,7 +190,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
+                          borderSide: const BorderSide(
+                            color: accentBlue,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {
@@ -228,14 +237,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
+                          borderSide: const BorderSide(
+                            color: accentBlue,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
                           return 'Please enter your email';
                         }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                        if (!RegExp(
+                          r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+                        ).hasMatch(value)) {
                           return 'Please enter a valid email';
                         }
                         return null;
@@ -275,7 +289,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
+                          borderSide: const BorderSide(
+                            color: accentBlue,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {
@@ -323,7 +340,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
+                          borderSide: const BorderSide(
+                            color: accentBlue,
+                            width: 2,
+                          ),
                         ),
                       ),
                       validator: (value) {

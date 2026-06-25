@@ -19,6 +19,7 @@ class AppStyles {
     offset: const Offset(0, 4),
   );
 }
+
 class BLEConstants {
   static const String serviceUuid = "12345678-1234-1234-1234-123456789abc";
   static const String charCommandUuid = "12345678-1234-1234-1234-123456789001";

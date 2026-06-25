@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:ac_automation/utils/constants.dart';
-import 'package:ac_automation/widgets/ac_button.dart';
-import 'dart:math' as math;
-
-import 'package:ac_automation/models/ac_profile.dart';
-import 'package:ac_automation/services/ac_provider.dart';
-import 'package:ac_automation/services/ble_service.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
+import 'package:ac_automation/utils/constants.dart';
+import 'package:ac_automation/services/ac_provider.dart';
+import 'package:ac_automation/services/api_service.dart';
+import 'package:ac_automation/models/ac_profile.dart';
+import 'dart:math' as math;
 
 class ControlScreen extends StatefulWidget {
   final ACProfile profile;
@@ -16,251 +16,1251 @@ class ControlScreen extends StatefulWidget {
   State<ControlScreen> createState() => _ControlScreenState();
 }
 
-class _ControlScreenState extends State<ControlScreen> {
+class _ControlScreenState extends State<ControlScreen>
+    with TickerProviderStateMixin {
+  late PageController _pageController;
+  int _activeDeviceIndex = 0;
+
+  // AC States
+  double _temperature = 22.0;
+  String _mode = 'Cool';
+  bool _isPowerOn = true;
+  bool _presenceAutomation = true;
+
+  // Animation controllers
+  late AnimationController _breathController;
+  late Animation<double> _breathAnimation;
+  late AnimationController _airflowController;
+  late Animation<double> _airflowYAnimation;
+  late Animation<double> _airflowAlphaAnimation;
+
   @override
   void initState() {
     super.initState();
+    _isPowerOn = widget.profile.buttons.containsKey('power_on');
+
+    _pageController = PageController();
+
+    // Breathing animation for AC running status
+    _breathController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+    _breathAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _breathController, curve: Curves.easeInOut),
+    );
+    _breathController.repeat(reverse: true);
+
+    // Airflow animation for active fan flow
+    _airflowController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+    _airflowYAnimation = Tween<double>(begin: 0.0, end: 24.0).animate(
+      CurvedAnimation(parent: _airflowController, curve: Curves.linear),
+    );
+    _airflowAlphaAnimation =
+        TweenSequence<double>([
+          TweenSequenceItem(
+            tween: Tween<double>(begin: 0.8, end: 0.2),
+            weight: 50.0,
+          ),
+          TweenSequenceItem(
+            tween: Tween<double>(begin: 0.2, end: 0.8),
+            weight: 50.0,
+          ),
+        ]).animate(
+          CurvedAnimation(parent: _airflowController, curve: Curves.linear),
+        );
+
+    if (_isPowerOn) {
+      _airflowController.repeat();
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final bleService = Provider.of<BLEService>(context, listen: false);
       final acProvider = Provider.of<ACProvider>(context, listen: false);
-      
-      // Keep provider in sync with BLE status if it arrives while on this screen
-      bleService.statusStream.listen((message) {
-        if (mounted) acProvider.updateFromStatus(message);
-      });
+      final index = acProvider.cloudDevices.indexWhere(
+        (d) => d['deviceId'] == widget.profile.id,
+      );
+      if (index >= 0) {
+        setState(() {
+          _activeDeviceIndex = index;
+        });
+        _pageController.jumpToPage(index);
+      }
     });
   }
 
-  double _temperature = 22.0;
-  bool _isPowerOn = true;
-  String _mode = 'Cool';
-  String _fanSpeed = 'Auto';
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.secondaryBackground,
-      appBar: AppBar(
-        title: Text(widget.profile.name),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: Column(
-        children: [
-          if (context.watch<ACProvider>().lastError != null)
-            Container(
-              width: double.infinity,
-              color: AppColors.statusRed,
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-              child: Text(
-                'Hardware Error: ${context.watch<ACProvider>().lastError}',
-                style: const TextStyle(color: Colors.white, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-            ),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-            const SizedBox(height: 40),
-            // Temperature Hero Section
-            Center(
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  CustomPaint(
-                    size: const Size(260, 260),
-                    painter: _TempDialPainter(),
-                  ),
-                  _buildTemperatureDisplay(),
-                ],
-              ),
-            ),
-            const SizedBox(height: 60),
-            // Primary Controls
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  ACButton(
-                    icon: Icons.power_settings_new,
-                    label: 'Power',
-                    isActive: _isPowerOn,
-                    activeColor: _isPowerOn ? AppColors.primaryBrand : null,
-                    onTap: () async {
-                      final bleService = Provider.of<BLEService>(context, listen: false);
-                      final scaffoldMessenger = ScaffoldMessenger.of(context);
-                      final newState = !_isPowerOn;
-                      final key = newState ? 'power_on' : 'power_off';
-                      final button = widget.profile.buttons[key];
-                      if (button != null && button.isValid) {
-                        final success = await bleService.transmitButton(key, button);
-                        if (success) {
-                          if (mounted) setState(() => _isPowerOn = newState);
-                        } else {
-                          scaffoldMessenger.showSnackBar(
-                            const SnackBar(content: Text('Failed to send command')),
-                          );
-                        }
-                      } else {
-                        scaffoldMessenger.showSnackBar(
-                          SnackBar(content: Text('Button "$key" not learned yet')),
-                        );
-                      }
-                    },
-                  ),
-                  ACButton(
-                    icon: _getModeIcon(),
-                    label: _mode,
-                    isActive: true,
-                    onTap: _cycleMode,
-                  ),
-                  ACButton(
-                    icon: Icons.air,
-                    label: 'Fan: $_fanSpeed',
-                    isActive: true,
-                    onTap: _cycleFanSpeed,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 40),
-            // Secondary Controls Card
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppColors.primaryBackground,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [AppStyles.softShadow],
-              ),
-              child: GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 3,
-                mainAxisSpacing: 16,
-                crossAxisSpacing: 16,
-                children: [
-                  ACButton(icon: Icons.swap_vert, label: 'Swing', onTap: () {}),
-                  ACButton(icon: Icons.bolt, label: 'Turbo', onTap: () {}),
-                  ACButton(icon: Icons.timer_outlined, label: 'Timer', onTap: () {}),
-                  ACButton(icon: Icons.nightlight_round, label: 'Sleep', onTap: () {}),
-                  ACButton(icon: Icons.eco_outlined, label: 'Eco', onTap: () {}),
-                  ACButton(icon: Icons.cleaning_services, label: 'Clean', onTap: () {}),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  ],
-),
-    );
+  void dispose() {
+    _pageController.dispose();
+    _breathController.dispose();
+    _airflowController.dispose();
+    super.dispose();
   }
 
-  Widget _buildTemperatureDisplay() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '${_temperature.toInt()}°',
-          style: const TextStyle(
-            fontSize: 72,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const Text(
-          'Target Temp',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 14,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              onPressed: () => setState(() => _temperature--),
-              icon: const Icon(Icons.remove_circle_outline),
-              color: AppColors.primaryBrand,
-            ),
-            const SizedBox(width: 16),
-            IconButton(
-              onPressed: () => setState(() => _temperature++),
-              icon: const Icon(Icons.add_circle_outline),
-              color: AppColors.primaryBrand,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  void _onDeviceChanged(int index, ACProvider acProvider) {
+    setState(() {
+      _activeDeviceIndex = index;
+    });
+    final dev = acProvider.cloudDevices[index];
+    acProvider.selectDevice(dev);
 
-  IconData _getModeIcon() {
-    switch (_mode) {
-      case 'Cool': return Icons.ac_unit;
-      case 'Heat': return Icons.wb_sunny;
-      case 'Dry': return Icons.water_drop;
-      case 'Fan': return Icons.air;
-      default: return Icons.ac_unit;
+    // Sync local state with active device
+    setState(() {
+      _isPowerOn = dev['powerState'] ?? false;
+      _temperature = 22.0; // default template or last set
+      _mode = 'Cool';
+    });
+
+    if (_isPowerOn) {
+      _airflowController.repeat();
+    } else {
+      _airflowController.stop();
     }
   }
 
-  void _cycleMode() {
-    final modes = ['Cool', 'Heat', 'Dry', 'Fan'];
+  void _cycleMode(String mode) {
     setState(() {
-      _mode = modes[(modes.indexOf(_mode) + 1) % modes.length];
+      _mode = mode;
     });
   }
 
-  void _cycleFanSpeed() {
-    final speeds = ['Low', 'Med', 'High', 'Auto'];
-    setState(() {
-      _fanSpeed = speeds[(speeds.indexOf(_fanSpeed) + 1) % speeds.length];
-    });
-  }
-}
+  // --- Show Premium Settings Dialog ---
+  void _openSettingsMenu(
+    BuildContext context,
+    Map<String, dynamic> device,
+    ACProvider acProvider,
+  ) {
+    final nameController = TextEditingController(
+      text: device['deviceName'] ?? 'Smart AC Node',
+    );
+    bool isPresenceOn = _presenceAutomation;
+    // Get delays in seconds
+    double onTimeSec = (acProvider.onTimeMs / 1000.0).clamp(5.0, 120.0);
+    double offTimeSec = (acProvider.offTimeMs / 1000.0).clamp(10.0, 600.0);
+    String configBrand = device['activeConfigName'] ?? 'Voltas';
+    final brands = [
+      'Voltas',
+      'Daikin',
+      'Lloyd',
+      'Blue Star',
+      'Carrier',
+      'LG',
+      'Samsung',
+    ];
+    if (!brands.contains(configBrand)) {
+      brands.add(configBrand);
+    }
 
-class _TempDialPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (dialogCtx, setDialogState) {
+          return AlertDialog(
+            backgroundColor: AppColors.primaryBackground,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: const Text(
+              'Controller Settings',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+                fontSize: 18,
+              ),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // RENAME FIELD
+                  const Text(
+                    'Custom Name',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nameController,
+                    style: const TextStyle(color: AppColors.textPrimary),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: Colors.black.withOpacity(0.04),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.black.withOpacity(0.12),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(
+                          color: AppColors.primaryBrand,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
-    // Background track
-    final trackPaint = Paint()
-      ..color = AppColors.secondaryBackground
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12;
-    
-    canvas.drawCircle(center, radius - 6, trackPaint);
+                  // PRESENCE AUTOMATION RADAR SWITCH
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'LD2410 Radar Sensor',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Automate AC power based on presence',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Switch(
+                        value: isPresenceOn,
+                        onChanged: (val) {
+                          setDialogState(() {
+                            isPresenceOn = val;
+                          });
+                        },
+                        activeColor: AppColors.primaryBrand,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
 
-    // Gradient progress (mockup static for now, can be adjusted)
-    final progressPaint = Paint()
-      ..shader = const LinearGradient(
-        colors: [AppColors.primaryBrand, AppColors.secondaryAccent],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeWidth = 12;
+                  if (isPresenceOn) ...[
+                    // PRESENCE ON TIME CONFIG SLIDER
+                    Text(
+                      'Presence On Time: ${onTimeSec.toInt()}s',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.primaryBrand,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      'Time required to trigger Power-On',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    Slider(
+                      value: onTimeSec,
+                      min: 5,
+                      max: 120,
+                      activeColor: AppColors.primaryBrand,
+                      inactiveColor: Colors.black.withOpacity(0.12),
+                      onChanged: (val) {
+                        setDialogState(() {
+                          onTimeSec = val;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
 
-    const startAngle = -math.pi * 0.5;
-    const sweepAngle = math.pi * 1.5; // Represents progress
-    canvas.drawArc(
-      Rect.fromCircle(center: center, radius: radius - 6),
-      startAngle,
-      sweepAngle,
-      false,
-      progressPaint,
+                    // PRESENCE OFF TIME CONFIG SLIDER
+                    Text(
+                      'Absence Off Time: ${offTimeSec.toInt()}s',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.primaryBrand,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      'Time empty room triggers Power-Off',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    Slider(
+                      value: offTimeSec,
+                      min: 10,
+                      max: 600,
+                      activeColor: AppColors.primaryBrand,
+                      inactiveColor: Colors.black.withOpacity(0.12),
+                      onChanged: (val) {
+                        setDialogState(() {
+                          offTimeSec = val;
+                        });
+                      },
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+
+                  // Brand selection dropdown
+                  const Text(
+                    'Active Brand Preset',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black.withOpacity(0.12)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: configBrand,
+                        dropdownColor: AppColors.primaryBackground,
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        items: brands
+                            .map(
+                              (b) => DropdownMenuItem(
+                                value: b,
+                                child: Text(
+                                  b,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() {
+                              configBrand = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogCtx);
+                      context.push('/setup');
+                    },
+                    icon: const Icon(
+                      Icons.settings_remote_outlined,
+                      size: 18,
+                      color: AppColors.primaryBrand,
+                    ),
+                    label: const Text(
+                      'Re-launch IR Learning Wizard',
+                      style: TextStyle(color: AppColors.primaryBrand),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      side: const BorderSide(color: AppColors.primaryBrand),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogCtx),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  final newName = nameController.text.trim();
+                  final onMs = (onTimeSec * 1000).round();
+                  final offMs = (offTimeSec * 1000).round();
+
+                  Navigator.pop(dialogCtx);
+
+                  // Sync parameters to Cloud
+                  await ApiService.syncDevice(
+                    deviceId: device['deviceId'],
+                    deviceName: newName,
+                    activeConfigName: configBrand,
+                  );
+                  await acProvider.setCloudTiming(onMs, offMs);
+                  await acProvider.fetchCloudDevices();
+
+                  setState(() {
+                    _presenceAutomation = isPresenceOn;
+                  });
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Settings saved successfully!'),
+                        backgroundColor: AppColors.statusGreen,
+                      ),
+                    );
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryBrand,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Save Changes',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) {
+    final acProvider = Provider.of<ACProvider>(context);
+    final deviceList = acProvider.cloudDevices;
+
+    final activeDevice = deviceList.isNotEmpty
+        ? deviceList[_activeDeviceIndex]
+        : null;
+
+    if (activeDevice == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Device Control')),
+        body: const Center(child: Text('No active device selected.')),
+      );
+    }
+
+    final isOnline = activeDevice['online'] ?? false;
+    final room =
+        activeDevice['roomName'] ?? activeDevice['deviceName'] ?? 'Room';
+
+    return Scaffold(
+      backgroundColor: AppColors.secondaryBackground,
+      body: Container(
+        decoration: const BoxDecoration(color: AppColors.secondaryBackground),
+        child: SafeArea(
+          child: Column(
+            children: [
+              const SizedBox(height: 16),
+              // Custom Header Bar
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Back Button
+                    GestureDetector(
+                      onTap: () => context.go('/'),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+
+                    // Device Switching Tabs
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: List.generate(
+                            math.min(2, deviceList.length),
+                            (index) {
+                              final dev = deviceList[index];
+                              final isCurrent = index == _activeDeviceIndex;
+                              return Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 4,
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      _pageController.animateToPage(
+                                        index,
+                                        duration: const Duration(
+                                          milliseconds: 300,
+                                        ),
+                                        curve: Curves.easeInOut,
+                                      );
+                                    },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 250,
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 8,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: isCurrent
+                                            ? AppColors.primaryBrand
+                                            : Colors.white.withOpacity(0.06),
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          dev['deviceName'] ?? 'Room AC',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: isCurrent
+                                                ? Colors.white
+                                                : AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Settings Button
+                    GestureDetector(
+                      onTap: () =>
+                          _openSettingsMenu(context, activeDevice, acProvider),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.settings,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Scrollable content area for active device
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  physics: const NeverScrollableScrollPhysics(),
+                  onPageChanged: (idx) => _onDeviceChanged(idx, acProvider),
+                  itemCount: deviceList.length,
+                  itemBuilder: (context, index) {
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        children: [
+                          // CENTER AC ILLUSTRATION & AIRFLOW ANIMATION
+                          SizedBox(
+                            width: double.infinity,
+                            height: 180,
+                            child: Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                // Glow Background
+                                if (isOnline && _isPowerOn)
+                                  Container(
+                                    width: 160,
+                                    height: 160,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: RadialGradient(
+                                        colors: [
+                                          AppColors.primaryBrand.withOpacity(
+                                            0.3,
+                                          ),
+                                          Colors.transparent,
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // AC Vector drawing container
+                                    Container(
+                                      width: 210,
+                                      height: 65,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(
+                                              0.06,
+                                            ),
+                                            blurRadius: 10,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                        border: Border.all(
+                                          color: _isPowerOn
+                                              ? AppColors.primaryBrand
+                                                    .withOpacity(0.2)
+                                              : Colors.black.withOpacity(0.08),
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Stack(
+                                        children: [
+                                          // Subtle horizontal grill line near top
+                                          Positioned(
+                                            top: 8,
+                                            left: 15,
+                                            right: 15,
+                                            child: Container(
+                                              height: 2,
+                                              color: Colors.black.withOpacity(
+                                                0.05,
+                                              ),
+                                            ),
+                                          ),
+                                          // Main AC Display & Icons
+                                          Align(
+                                            alignment: Alignment.center,
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 16,
+                                                  ),
+                                              child: Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  // Left side brand/status
+                                                  Row(
+                                                    children: [
+                                                      ColorFiltered(
+                                                        colorFilter: ColorFilter.mode(
+                                                          _isPowerOn
+                                                              ? AppColors
+                                                                    .primaryBrand
+                                                              : AppColors
+                                                                    .textSecondary
+                                                                    .withOpacity(
+                                                                      0.5,
+                                                                    ),
+                                                          BlendMode.srcIn,
+                                                        ),
+                                                        child: Image.asset(
+                                                          'assets/20.png',
+                                                          width: 16,
+                                                          height: 16,
+                                                          fit: BoxFit.contain,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      // Mini status LED indicator
+                                                      Container(
+                                                        width: 6,
+                                                        height: 6,
+                                                        decoration: BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          color: _isPowerOn
+                                                              ? AppColors
+                                                                    .statusGreen
+                                                              : Colors.black
+                                                                    .withOpacity(
+                                                                      0.1,
+                                                                    ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  // Right side LED Temperature display
+                                                  if (_isPowerOn)
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 8,
+                                                            vertical: 2,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: AppColors
+                                                            .primaryBrand
+                                                            .withOpacity(0.08),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        "${_temperature.toInt()}°C",
+                                                        style: const TextStyle(
+                                                          fontSize: 15,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color: AppColors
+                                                              .primaryBrand,
+                                                          letterSpacing: 0.5,
+                                                        ),
+                                                      ),
+                                                    )
+                                                  else
+                                                    Text(
+                                                      "OFF",
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                        color: AppColors
+                                                            .textSecondary
+                                                            .withOpacity(0.6),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                          // Bottom swing flap line
+                                          Positioned(
+                                            bottom: 6,
+                                            left: 0,
+                                            right: 0,
+                                            child: Container(
+                                              height: 3,
+                                              color: _isPowerOn
+                                                  ? AppColors.primaryBrand
+                                                        .withOpacity(0.25)
+                                                  : Colors.black.withOpacity(
+                                                      0.06,
+                                                    ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 14),
+
+                                    // Airflow animation waves
+                                    AnimatedBuilder(
+                                      animation: _airflowController,
+                                      builder: (context, child) {
+                                        return Opacity(
+                                          opacity: _isPowerOn
+                                              ? _airflowAlphaAnimation.value
+                                              : 0.0,
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            children: List.generate(3, (idx) {
+                                              return Padding(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                    ),
+                                                child: Transform.translate(
+                                                  offset: Offset(
+                                                    0,
+                                                    _airflowYAnimation.value,
+                                                  ),
+                                                  child: Transform.rotate(
+                                                    angle: math.pi / 2,
+                                                    child: ColorFiltered(
+                                                      colorFilter:
+                                                          const ColorFilter.mode(
+                                                            AppColors
+                                                                .primaryBrand,
+                                                            BlendMode.srcIn,
+                                                          ),
+                                                      child: Image.asset(
+                                                        'assets/20.png',
+                                                        width: 24,
+                                                        height: 24,
+                                                        fit: BoxFit.contain,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              );
+                                            }),
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // SUBTITLE DEVICE NAME
+                          Text(
+                            activeDevice['deviceName'] ?? 'Bedroom AC',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: AppColors.primaryBrand,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            "$room Comfort",
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // TEMPERATURE CIRCULAR SLIDER
+                          _CircularTempSlider(
+                            temperature: _temperature,
+                            isPowerOn: _isPowerOn,
+                            onTemperatureChanged: (temp) {
+                              setState(() {
+                                _temperature = temp;
+                              });
+                            },
+                          ),
+
+                          const SizedBox(height: 24),
+
+                          // POWER & OPERATION MODES ROW
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              // Mode selector
+                              GestureDetector(
+                                onTap: () {
+                                  if (isOnline && _isPowerOn) {
+                                    final modes = [
+                                      'Cool',
+                                      'Heat',
+                                      'Eco',
+                                      'Auto',
+                                    ];
+                                    int currentIdx = modes.indexOf(_mode);
+                                    String nextMode =
+                                        modes[(currentIdx + 1) % modes.length];
+                                    _cycleMode(nextMode);
+                                  }
+                                },
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: (isOnline && _isPowerOn)
+                                            ? AppColors.primaryBrand
+                                                  .withOpacity(0.08)
+                                            : Colors.white.withOpacity(0.06),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.15),
+                                        ),
+                                      ),
+                                      child: _mode == 'Cool'
+                                          ? ColorFiltered(
+                                              colorFilter: ColorFilter.mode(
+                                                (isOnline && _isPowerOn)
+                                                    ? AppColors.primaryBrand
+                                                    : AppColors.textSecondary,
+                                                BlendMode.srcIn,
+                                              ),
+                                              child: Image.asset(
+                                                'assets/20.png',
+                                                width: 24,
+                                                height: 24,
+                                                fit: BoxFit.contain,
+                                              ),
+                                            )
+                                          : Icon(
+                                              _mode == 'Heat'
+                                                  ? Icons.wb_sunny_rounded
+                                                  : _mode == 'Eco'
+                                                  ? Icons.eco_rounded
+                                                  : Icons.hdr_auto_rounded,
+                                              color: (isOnline && _isPowerOn)
+                                                  ? AppColors.primaryBrand
+                                                  : AppColors.textSecondary,
+                                              size: 24,
+                                            ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      (isOnline && _isPowerOn) ? _mode : "Mode",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: (isOnline && _isPowerOn)
+                                            ? AppColors.textPrimary
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Power button
+                              GestureDetector(
+                                onTap: () async {
+                                  if (!isOnline) return;
+                                  final nextState = !_isPowerOn;
+                                  final success =
+                                      await ApiService.toggleDevicePower(
+                                        activeDevice['deviceId'],
+                                        nextState,
+                                      );
+                                  if (success) {
+                                    setState(() {
+                                      _isPowerOn = nextState;
+                                    });
+                                    if (nextState) {
+                                      _airflowController.repeat();
+                                    } else {
+                                      _airflowController.stop();
+                                    }
+                                  }
+                                },
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 72,
+                                      height: 72,
+                                      decoration: BoxDecoration(
+                                        color: _isPowerOn
+                                            ? AppColors.primaryBrand
+                                            : Colors.white.withOpacity(0.08),
+                                        shape: BoxShape.circle,
+                                        boxShadow: _isPowerOn
+                                            ? [
+                                                BoxShadow(
+                                                  color: AppColors.primaryBrand
+                                                      .withOpacity(0.3),
+                                                  blurRadius: 12,
+                                                  spreadRadius: 2,
+                                                ),
+                                              ]
+                                            : [],
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.2),
+                                          width: 2,
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.power_settings_new,
+                                        color: _isPowerOn
+                                            ? Colors.white
+                                            : AppColors.textSecondary,
+                                        size: 32,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _isPowerOn ? "Turn Off" : "Turn On",
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Presence automation status
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _presenceAutomation = !_presenceAutomation;
+                                  });
+                                },
+                                child: Column(
+                                  children: [
+                                    Container(
+                                      width: 56,
+                                      height: 56,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.06),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.15),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.sensor_occupied,
+                                        color: _presenceAutomation
+                                            ? AppColors.statusGreen
+                                            : AppColors.statusRed,
+                                        size: 24,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      _presenceAutomation
+                                          ? "Radar On"
+                                          : "Radar Off",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: _presenceAutomation
+                                            ? AppColors.statusGreen
+                                            : AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- Premium Circular Temperature Slider ---
+class _CircularTempSlider extends StatefulWidget {
+  final double temperature;
+  final bool isPowerOn;
+  final ValueChanged<double> onTemperatureChanged;
+
+  const _CircularTempSlider({
+    required this.temperature,
+    required this.isPowerOn,
+    required this.onTemperatureChanged,
+  });
+
+  @override
+  State<_CircularTempSlider> createState() => _CircularTempSliderState();
+}
+
+class _CircularTempSliderState extends State<_CircularTempSlider> {
+  late double _currentTemp;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentTemp = widget.temperature;
+  }
+
+  @override
+  void didUpdateWidget(covariant _CircularTempSlider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.temperature != widget.temperature) {
+      _currentTemp = widget.temperature;
+    }
+  }
+
+  void _handleDrag(Offset localPosition, Size size) {
+    if (!widget.isPowerOn) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final dx = localPosition.dx - center.dx;
+    final dy = localPosition.dy - center.dy;
+
+    // Calculate angle in radians
+    double angleRad = math.atan2(dy, dx);
+    double angleDeg = angleRad * 180 / math.pi;
+
+    if (angleDeg < 0) {
+      angleDeg += 360;
+    }
+
+    // Align angle with sweep boundaries [140, 400]
+    double normalizedAngle = angleDeg;
+    if (normalizedAngle < 120) {
+      normalizedAngle += 360;
+    }
+
+    final clampedAngle = normalizedAngle.clamp(140.0, 400.0);
+    final fraction = (clampedAngle - 140.0) / 260.0;
+    final resolvedTemp = 16.0 + (fraction * 14.0);
+
+    setState(() {
+      _currentTemp = resolvedTemp.clamp(16.0, 30.0);
+    });
+    widget.onTemperatureChanged(_currentTemp);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const size = Size(240, 240);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return GestureDetector(
+          onPanUpdate: (details) => _handleDrag(details.localPosition, size),
+          onPanStart: (details) => _handleDrag(details.localPosition, size),
+          child: SizedBox(
+            width: size.width,
+            height: size.height,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CustomPaint(
+                  size: size,
+                  painter: _CircularSliderPainter(
+                    temperature: _currentTemp,
+                    isPowerOn: widget.isPowerOn,
+                  ),
+                ),
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.isPowerOn ? _currentTemp.toStringAsFixed(0) : "--",
+                      style: const TextStyle(
+                        fontSize: 58,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.isPowerOn ? "TARGET TEMPERATURE" : "STANDBY MODE",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: widget.isPowerOn
+                            ? AppColors.primaryBrand
+                            : AppColors.textSecondary,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CircularSliderPainter extends CustomPainter {
+  final double temperature;
+  final bool isPowerOn;
+
+  _CircularSliderPainter({required this.temperature, required this.isPowerOn});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2.5;
+
+    const sweepAngleStart = 140.0;
+    const sweepAngleMax = 260.0;
+
+    final proportion = (temperature - 16.0) / 14.0;
+    final activeAngle = sweepAngleStart + (proportion * sweepAngleMax);
+
+    // Convert degrees to radians for drawing
+    double startAngleRad = sweepAngleStart * math.pi / 180;
+    double sweepAngleMaxRad = sweepAngleMax * math.pi / 180;
+    double activeSweepAngleRad =
+        (activeAngle - sweepAngleStart) * math.pi / 180;
+
+    // 1. Draw Background Inactive Gauge Arc
+    final trackPaint = Paint()
+      ..color = Colors.white.withOpacity(0.1)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 10
+      ..strokeCap = StrokeCap.round;
+
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      startAngleRad,
+      sweepAngleMaxRad,
+      false,
+      trackPaint,
+    );
+
+    // 2. Draw Active Temperature Accent Arc
+    if (isPowerOn) {
+      final activePaint = Paint()
+        ..shader = const LinearGradient(
+          colors: [AppColors.secondaryAccent, AppColors.primaryBrand],
+        ).createShader(Rect.fromCircle(center: center, radius: radius))
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngleRad,
+        activeSweepAngleRad,
+        false,
+        activePaint,
+      );
+
+      // 3. Draw Slider Handle (Thumb)
+      final handleAngleRad = activeAngle * math.pi / 180;
+      final handleX = center.dx + radius * math.cos(handleAngleRad);
+      final handleY = center.dy + radius * math.sin(handleAngleRad);
+
+      final handlePaintOuter = Paint()..color = Colors.white;
+      final handlePaintInner = Paint()..color = AppColors.primaryBrand;
+
+      canvas.drawCircle(Offset(handleX, handleY), 12, handlePaintOuter);
+      canvas.drawCircle(Offset(handleX, handleY), 6, handlePaintInner);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CircularSliderPainter oldDelegate) {
+    return oldDelegate.temperature != temperature ||
+        oldDelegate.isPowerOn != isPowerOn;
+  }
 }

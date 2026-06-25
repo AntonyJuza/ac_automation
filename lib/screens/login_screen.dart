@@ -15,19 +15,37 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
+  final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  bool _emailChecked = false;
+  bool _emailExists = false;
   bool _isLoading = false;
   String? _errorMessage;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _checkEmail() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter your email';
+      });
+      return;
+    }
+
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
+      setState(() {
+        _errorMessage = 'Please enter a valid email address';
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -36,33 +54,124 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
-      final success = await authService.login(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
-
-      if (success && mounted) {
-        context.go('/');
-      }
+      final exists = await authService.checkEmail(email);
+      setState(() {
+        _emailChecked = true;
+        _emailExists = exists;
+      });
     } catch (e) {
       setState(() {
-        _errorMessage = e.toString().replaceAll('Exception: ', '');
+        _errorMessage = 'Failed to verify email. Please try again.';
       });
     } finally {
-      if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _submitAuth() async {
+    if (_isLoading) return;
+
+    if (!_emailChecked) {
+      await _checkEmail();
+      return;
+    }
+
+    if (_emailExists) {
+      // Login flow
+      if (_passwordController.text.isEmpty) {
         setState(() {
-          _isLoading = false;
+          _errorMessage = 'Please enter your password';
         });
+        return;
+      }
+
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final success = await authService.login(
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+        if (success && mounted) {
+          context.go('/');
+        }
+      } catch (e) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        });
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      }
+    } else {
+      // Signup flow
+      if (_usernameController.text.trim().isEmpty) {
+        setState(() {
+          _errorMessage = 'Please enter a username';
+        });
+        return;
+      }
+      if (_passwordController.text.isEmpty) {
+        setState(() {
+          _errorMessage = 'Please enter a password';
+        });
+        return;
+      }
+
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      try {
+        final authService = Provider.of<AuthService>(context, listen: false);
+        final success = await authService.register(
+          _usernameController.text.trim(),
+          _emailController.text.trim(),
+          _passwordController.text,
+        );
+        if (success && mounted) {
+          context.go('/');
+        }
+      } catch (e) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+        });
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
       }
     }
   }
 
+  void _resetEmailCheck() {
+    setState(() {
+      _emailChecked = false;
+      _emailExists = false;
+      _usernameController.clear();
+      _passwordController.clear();
+      _errorMessage = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    const Color inputFillColor = Color(0xFFEEF2F6); 
-    const Color textColorBrand = Color(0xFF0E1A2B); 
-    const Color textMutedColor = Color(0xFF64748B); 
-    const Color accentBlue = Color(0xFF1763D6); 
+    const Color inputFillColor = Color(0xFFEEF2F6);
+    const Color textColorBrand = Color(0xFF0E1A2B);
+    const Color textMutedColor = Color(0xFF64748B);
+    const Color accentBlue = Color(0xFF1763D6);
 
     const String avioSvg = '''
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="-10 -10 48 48">
@@ -107,15 +216,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // AVIO Logo (Left aligned as original)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.start,
                       children: [
                         SizedBox(
                           width: 40,
                           height: 40,
-                          child: SvgPicture.string(
-                            avioSvg,
-                          ),
+                          child: SvgPicture.string(avioSvg),
                         ),
                         const SizedBox(width: 10),
                         const Text(
@@ -131,34 +239,73 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 48),
 
-                    const Text(
-                      'Welcome back',
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: textColorBrand,
-                        letterSpacing: -0.5,
+                    // Greeting Header (Left aligned)
+                    AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 300),
+                      crossFadeState: _emailChecked
+                          ? (_emailExists
+                                ? CrossFadeState.showFirst
+                                : CrossFadeState.showSecond)
+                          : CrossFadeState.showFirst,
+                      firstChild: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Welcome back',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              color: textColorBrand,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Sign in to manage your AC devices.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: textMutedColor,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    const Text(
-                      'Sign in to manage your AC devices.',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: textMutedColor,
-                        fontWeight: FontWeight.w400,
+                      secondChild: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Create Account',
+                            style: TextStyle(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w800,
+                              color: textColorBrand,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Sign up to manage your AC devices.',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: textMutedColor,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 32),
 
+                    // Error Message
                     if (_errorMessage != null) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: AppColors.statusRed.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.statusRed.withOpacity(0.2)),
+                          border: Border.all(
+                            color: AppColors.statusRed.withOpacity(0.2),
+                          ),
                         ),
                         child: Text(
                           _errorMessage!,
@@ -172,12 +319,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 20),
                     ],
 
+                    // Email Field
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      style: const TextStyle(
-                        color: textColorBrand,
+                      enabled: !_emailChecked,
+                      textInputAction: _emailChecked
+                          ? TextInputAction.none
+                          : TextInputAction.next,
+                      onFieldSubmitted: (_) =>
+                          _emailChecked ? null : _submitAuth(),
+                      style: TextStyle(
+                        color: _emailChecked ? textMutedColor : textColorBrand,
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
                       ),
@@ -204,88 +357,165 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your email';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: true,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      style: const TextStyle(
-                        color: textColorBrand,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Password',
-                        hintStyle: const TextStyle(
-                          color: textMutedColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        filled: true,
-                        fillColor: inputFillColor,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 16,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(color: accentBlue, width: 2),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter your password';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 8),
-
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {
-                          context.push('/forgot');
-                        },
-                        style: TextButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: const Text(
-                          'Forgot password?',
-                          style: TextStyle(
+                          borderSide: const BorderSide(
                             color: accentBlue,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            width: 2,
                           ),
                         ),
+                        disabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                        suffixIcon: _emailChecked
+                            ? IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: accentBlue,
+                                  size: 18,
+                                ),
+                                onPressed: _resetEmailCheck,
+                              )
+                            : null,
                       ),
                     ),
+
+                    // Elegant Compose-style Animated Height Expansion
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeInOut,
+                      child: Container(
+                        child: _emailChecked
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const SizedBox(height: 12),
+                                  if (!_emailExists) ...[
+                                    // Username field for signup
+                                    TextFormField(
+                                      controller: _usernameController,
+                                      keyboardType: TextInputType.text,
+                                      textInputAction: TextInputAction.next,
+                                      style: const TextStyle(
+                                        color: textColorBrand,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      decoration: InputDecoration(
+                                        hintText: 'Username',
+                                        hintStyle: const TextStyle(
+                                          color: textMutedColor,
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w400,
+                                        ),
+                                        filled: true,
+                                        fillColor: inputFillColor,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 20,
+                                              vertical: 16,
+                                            ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            16,
+                                          ),
+                                          borderSide: const BorderSide(
+                                            color: accentBlue,
+                                            width: 2,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
+                                  // Password field
+                                  TextFormField(
+                                    controller: _passwordController,
+                                    obscureText: true,
+                                    textInputAction: TextInputAction.done,
+                                    onFieldSubmitted: (_) => _submitAuth(),
+                                    style: const TextStyle(
+                                      color: textColorBrand,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    decoration: InputDecoration(
+                                      hintText: 'Password',
+                                      hintStyle: const TextStyle(
+                                        color: textMutedColor,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w400,
+                                      ),
+                                      filled: true,
+                                      fillColor: inputFillColor,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 20,
+                                            vertical: 16,
+                                          ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: const BorderSide(
+                                          color: accentBlue,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (_emailExists) ...[
+                                    const SizedBox(height: 8),
+                                    Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: () =>
+                                            context.push('/forgot'),
+                                        style: TextButton.styleFrom(
+                                          padding: EdgeInsets.zero,
+                                          minimumSize: Size.zero,
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                        child: const Text(
+                                          'Forgot password?',
+                                          style: TextStyle(
+                                            color: accentBlue,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ),
+
                     const SizedBox(height: 24),
 
+                    // Submit Button
                     ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: _isLoading ? null : _submitAuth,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: accentBlue,
                         foregroundColor: Colors.white,
@@ -304,19 +534,43 @@ class _LoginScreenState extends State<LoginScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : const Text(
-                              'Sign in',
-                              style: TextStyle(
+                          : Text(
+                              !_emailChecked
+                                  ? 'Next'
+                                  : (_emailExists ? 'Sign in' : 'Sign up'),
+                              style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                     ),
+
+                    if (_emailChecked) ...[
+                      const SizedBox(height: 12),
+                      TextButton(
+                        onPressed: _resetEmailCheck,
+                        child: const Text(
+                          'Use a different email address',
+                          style: TextStyle(
+                            color: accentBlue,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 24),
 
+                    // OR Divider (from original page)
                     Row(
                       children: [
-                        const Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                        const Expanded(
+                          child: Divider(
+                            color: Color(0xFFE2E8F0),
+                            thickness: 1,
+                          ),
+                        ),
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
                           child: Text(
@@ -328,22 +582,33 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
                         ),
-                        const Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                        const Expanded(
+                          child: Divider(
+                            color: Color(0xFFE2E8F0),
+                            thickness: 1,
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 24),
 
+                    // Continue with Google (from original page)
                     OutlinedButton(
                       onPressed: () {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Google Authentication is not supported yet.'),
+                            content: Text(
+                              'Google Authentication is not supported yet.',
+                            ),
                           ),
                         );
                       },
                       style: OutlinedButton.styleFrom(
                         backgroundColor: Colors.white,
-                        side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                        side: const BorderSide(
+                          color: Color(0xFFE2E8F0),
+                          width: 1,
+                        ),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
@@ -352,11 +617,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SvgPicture.string(
-                            googleSvg,
-                            width: 18,
-                            height: 18,
-                          ),
+                          SvgPicture.string(googleSvg, width: 18, height: 18),
                           const SizedBox(width: 12),
                           const Text(
                             'Continue with Google',
@@ -371,6 +632,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 40),
 
+                    // Footer Row (from original page)
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -383,7 +645,11 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => context.push('/register'),
+                          onTap: () {
+                            // If they tap here, reset checker to let them start registration or auto-fill
+                            _resetEmailCheck();
+                            context.push('/register');
+                          },
                           child: const Text(
                             'Sign up',
                             style: TextStyle(

@@ -9,7 +9,9 @@ class ApiService {
 
   static void _checkResponse(http.Response response) {
     if (response.statusCode == 401) {
-      debugPrint('[ApiService] Unauthorized (401) response received, triggering onUnauthorized callback');
+      debugPrint(
+        '[ApiService] Unauthorized (401) response received, triggering onUnauthorized callback',
+      );
       onUnauthorized?.call();
     }
   }
@@ -41,7 +43,7 @@ class ApiService {
         },
         body: jsonEncode(body),
       );
-      
+
       debugPrint('[Cloud] Response: ${response.statusCode} - ${response.body}');
       _checkResponse(response);
 
@@ -62,17 +64,15 @@ class ApiService {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId');
       debugPrint('Fetching device data from cloud: $url');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.get(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
-      
+
       _checkResponse(response);
       if (response.statusCode == 200) {
         debugPrint('Cloud fetch successful!');
@@ -90,17 +90,15 @@ class ApiService {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/devices');
       debugPrint('Fetching user devices: $url');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.get(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
-      
+
       _checkResponse(response);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -109,7 +107,9 @@ class ApiService {
           return list.map((item) => item as Map<String, dynamic>).toList();
         }
       }
-      debugPrint('Get User Devices failed: HTTP ${response.statusCode} - ${response.body}');
+      debugPrint(
+        'Get User Devices failed: HTTP ${response.statusCode} - ${response.body}',
+      );
       return null;
     } catch (e) {
       debugPrint('Get User Devices Error: $e');
@@ -121,17 +121,15 @@ class ApiService {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/events');
       debugPrint('Fetching events: $url');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.get(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
-      
+
       _checkResponse(response);
       if (response.statusCode == 200) {
         final List<dynamic> list = jsonDecode(response.body);
@@ -149,7 +147,7 @@ class ApiService {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/devices/claim');
       debugPrint('Claiming device: $url | ID: $deviceId');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
@@ -161,7 +159,7 @@ class ApiService {
         },
         body: jsonEncode({'deviceId': deviceId}),
       );
-      
+
       _checkResponse(response);
       if (response.statusCode == 200 || response.statusCode == 201) {
         final decoded = jsonDecode(response.body);
@@ -178,19 +176,19 @@ class ApiService {
   static Future<bool> toggleDevicePower(String deviceId, bool turnOn) async {
     try {
       final endpoint = turnOn ? 'power-on' : 'power-off';
-      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/$endpoint');
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/$endpoint',
+      );
       debugPrint('Toggling power ($turnOn) via URL: $url');
-      
+
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.post(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
-      
+
       _checkResponse(response);
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body);
@@ -206,15 +204,15 @@ class ApiService {
 
   static Future<bool> startLearn(String deviceId) async {
     try {
-      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/learn-start');
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/learn-start',
+      );
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.post(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
       _checkResponse(response);
       return response.statusCode == 200;
@@ -226,15 +224,15 @@ class ApiService {
 
   static Future<bool> stopLearn(String deviceId) async {
     try {
-      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/learn-stop');
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/learn-stop',
+      );
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.post(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
       _checkResponse(response);
       return response.statusCode == 200;
@@ -246,15 +244,15 @@ class ApiService {
 
   static Future<Map<String, dynamic>?> getCapturedIr(String deviceId) async {
     try {
-      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/captured-ir');
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/captured-ir',
+      );
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
       final response = await http.get(
         url,
-        headers: {
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
+        headers: {if (token != null) 'Authorization': 'Bearer $token'},
       );
       _checkResponse(response);
       if (response.statusCode == 200) {
@@ -283,10 +281,7 @@ class ApiService {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'onTime': onTime,
-          'offTime': offTime,
-        }),
+        body: jsonEncode({'onTime': onTime, 'offTime': offTime}),
       );
       _checkResponse(response);
       return response.statusCode == 200;
@@ -302,7 +297,9 @@ class ApiService {
     required int dstOffset,
   }) async {
     try {
-      final url = Uri.parse('${APIConstants.baseUrl}/devices/$deviceId/time-config');
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/time-config',
+      );
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('jwt_token');
 
@@ -312,10 +309,7 @@ class ApiService {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'gmtOffset': gmtOffset,
-          'dstOffset': dstOffset,
-        }),
+        body: jsonEncode({'gmtOffset': gmtOffset, 'dstOffset': dstOffset}),
       );
       _checkResponse(response);
       return response.statusCode == 200;

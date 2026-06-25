@@ -8,6 +8,8 @@ import 'package:ac_automation/screens/dynamic_config_screen.dart';
 import 'package:ac_automation/screens/login_screen.dart';
 import 'package:ac_automation/screens/register_screen.dart';
 import 'package:ac_automation/screens/forgot_screen.dart';
+import 'package:ac_automation/screens/profile_screen.dart';
+import 'package:ac_automation/screens/scanner_screen.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:provider/provider.dart';
@@ -93,6 +95,14 @@ class ACAutomationApp extends StatelessWidget {
                 path: '/dynamic_config',
                 builder: (context, state) => const DynamicConfigScreen(),
               ),
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfileScreen(),
+              ),
+              GoRoute(
+                path: '/scanner',
+                builder: (context, state) => const ScannerScreen(),
+              ),
             ],
           );
 
@@ -135,4 +145,3 @@ class ACAutomationApp extends StatelessWidget {
     );
   }
 }
-

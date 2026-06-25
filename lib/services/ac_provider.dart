@@ -97,7 +97,7 @@ class ACProvider with ChangeNotifier {
       }
       return;
     }
-    
+
     _lastError = null;
     // Expected format: AC=OFF|PRESENCE=YES
     final parts = status.split('|');
@@ -106,7 +106,11 @@ class ACProvider with ChangeNotifier {
         final statusVal = part.split('=')[1];
         if (_presenceStatus != statusVal) {
           _presenceStatus = statusVal;
-          _isPresenceDetected = (statusVal == 'YES' || statusVal == 'MOVING' || statusVal == 'STATIC' || statusVal == 'BOTH');
+          _isPresenceDetected =
+              (statusVal == 'YES' ||
+              statusVal == 'MOVING' ||
+              statusVal == 'STATIC' ||
+              statusVal == 'BOTH');
         }
       }
       if (part.startsWith('AC=')) {
@@ -145,21 +149,25 @@ class ACProvider with ChangeNotifier {
 
   Future<void> _syncWithCloud() async {
     if (_deviceId == 'UNKNOWN') return;
-    
+
     debugPrint('[Scanner] Fetching cloud data for $_deviceId');
     final data = await ApiService.getDevice(_deviceId);
     if (data != null && data['configData'] != null) {
-       final profileMap = data['configData'];
-       try {
-         final profile = ACProfile.fromJson(profileMap);
-         bool exists = _profiles.any((p) => p.id == profile.id || p.name == profile.name);
-         if (!exists) {
-           await addProfile(profile);
-           debugPrint('[App] Seamlessly downloaded profile ${profile.name} from Cloud!');
-         }
-       } catch(e) {
-         debugPrint('[App] Error parsing cloud profile: $e');
-       }
+      final profileMap = data['configData'];
+      try {
+        final profile = ACProfile.fromJson(profileMap);
+        bool exists = _profiles.any(
+          (p) => p.id == profile.id || p.name == profile.name,
+        );
+        if (!exists) {
+          await addProfile(profile);
+          debugPrint(
+            '[App] Seamlessly downloaded profile ${profile.name} from Cloud!',
+          );
+        }
+      } catch (e) {
+        debugPrint('[App] Error parsing cloud profile: $e');
+      }
     }
   }
 
@@ -170,18 +178,20 @@ class ACProvider with ChangeNotifier {
       _isAcOn = device['powerState'] ?? false;
       _isWifiConnected = device['online'] ?? false;
       _configName = device['activeConfigName'] ?? 'NONE';
-      
+
       if (device['configData'] != null) {
-         try {
-           final profileMap = device['configData'];
-           final profile = ACProfile.fromJson(profileMap);
-           bool exists = _profiles.any((p) => p.id == profile.id || p.name == profile.name);
-           if (!exists) {
-             addProfile(profile);
-           }
-         } catch(e) {
-           debugPrint('[App] Error parsing configData from cloud: $e');
-         }
+        try {
+          final profileMap = device['configData'];
+          final profile = ACProfile.fromJson(profileMap);
+          bool exists = _profiles.any(
+            (p) => p.id == profile.id || p.name == profile.name,
+          );
+          if (!exists) {
+            addProfile(profile);
+          }
+        } catch (e) {
+          debugPrint('[App] Error parsing configData from cloud: $e');
+        }
       }
     } else {
       _deviceId = 'UNKNOWN';
@@ -201,7 +211,7 @@ class ACProvider with ChangeNotifier {
       final devices = await ApiService.getUserDevices();
       if (devices != null) {
         _cloudDevices = devices;
-        
+
         if (_selectedDevice != null) {
           final updated = _cloudDevices.firstWhere(
             (d) => d['deviceId'] == _selectedDevice!['deviceId'],
@@ -241,7 +251,7 @@ class ACProvider with ChangeNotifier {
         if (devEvent.isNotEmpty) {
           final presenceVal = devEvent['presence'];
           final eventName = devEvent['event'] ?? '';
-          
+
           if (presenceVal == true || presenceVal == 1) {
             _isPresenceDetected = true;
             _presenceStatus = 'YES';
@@ -249,7 +259,7 @@ class ACProvider with ChangeNotifier {
             _isPresenceDetected = false;
             _presenceStatus = 'NONE';
           }
-          
+
           if (eventName == 'AC_ON') {
             _isAcOn = true;
           } else if (eventName == 'AC_OFF') {
@@ -257,7 +267,7 @@ class ACProvider with ChangeNotifier {
           }
         }
       }
-    } catch(e) {
+    } catch (e) {
       debugPrint('Error fetching latest presence: $e');
     }
   }
@@ -281,7 +291,7 @@ class ACProvider with ChangeNotifier {
   Future<bool> controlCloudDevicePower(bool turnOn) async {
     if (_selectedDevice == null) return false;
     final devId = _selectedDevice!['deviceId'];
-    
+
     _isAcOn = turnOn;
     notifyListeners();
 

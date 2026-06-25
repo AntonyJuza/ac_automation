@@ -68,7 +68,9 @@ class _SetupScreenState extends State<SetupScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryBrand,
                   minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
@@ -88,7 +90,7 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Widget _buildTextField({
-    required String label, 
+    required String label,
     required FormFieldSetter<String> onSaved,
     bool optional = false,
   }) {
@@ -102,9 +104,13 @@ class _SetupScreenState extends State<SetupScreen> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
       ),
-      validator: (v) => !optional && (v == null || v.isEmpty) ? 'Required' : null,
+      validator: (v) =>
+          !optional && (v == null || v.isEmpty) ? 'Required' : null,
       onSaved: onSaved,
     );
   }
@@ -113,11 +119,10 @@ class _SetupScreenState extends State<SetupScreen> {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
       // Navigate to Learn Screen with data
-      context.push('/learn', extra: {
-        'name': _name,
-        'brand': _brand,
-        'model': _model,
-      });
+      context.push(
+        '/learn',
+        extra: {'name': _name, 'brand': _brand, 'model': _model},
+      );
     }
   }
 }

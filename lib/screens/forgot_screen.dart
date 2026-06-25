@@ -60,7 +60,11 @@ class _ForgotScreenState extends State<ForgotScreen> {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.arrow_back, color: textMutedColor, size: 16),
+                          Icon(
+                            Icons.arrow_back,
+                            color: textMutedColor,
+                            size: 16,
+                          ),
                           SizedBox(width: 8),
                           Text(
                             'Back to sign in',
@@ -105,7 +109,11 @@ class _ForgotScreenState extends State<ForgotScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.check_circle, color: successColor, size: 20),
+                          const Icon(
+                            Icons.check_circle,
+                            color: successColor,
+                            size: 20,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -170,7 +178,10 @@ class _ForgotScreenState extends State<ForgotScreen> {
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(16),
-                              borderSide: const BorderSide(color: accentBlue, width: 2),
+                              borderSide: const BorderSide(
+                                color: accentBlue,
+                                width: 2,
+                              ),
                             ),
                           ),
                         ),
