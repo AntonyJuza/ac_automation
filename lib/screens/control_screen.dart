@@ -130,6 +130,18 @@ class _ControlScreenState extends State<ControlScreen>
     });
   }
 
+  Future<void> _updateTemperature(String deviceId, double temp) async {
+    final success = await ApiService.changeTemperature(
+      deviceId: deviceId,
+      temp: temp.toInt(),
+    );
+    if (success) {
+      debugPrint('[ControlScreen] Temperature updated to ${temp.toInt()}°C');
+    } else {
+      debugPrint('[ControlScreen] Failed to update temperature');
+    }
+  }
+
   // --- Show Premium Settings Dialog ---
   void _openSettingsMenu(
     BuildContext context,
@@ -899,6 +911,9 @@ class _ControlScreenState extends State<ControlScreen>
                                 _temperature = temp;
                               });
                             },
+                            onTemperatureChangeEnd: (temp) {
+                              _updateTemperature(activeDevice['deviceId'], temp);
+                            },
                           ),
 
                           const SizedBox(height: 24),
@@ -1125,11 +1140,13 @@ class _CircularTempSlider extends StatefulWidget {
   final double temperature;
   final bool isPowerOn;
   final ValueChanged<double> onTemperatureChanged;
+  final ValueChanged<double>? onTemperatureChangeEnd;
 
   const _CircularTempSlider({
     required this.temperature,
     required this.isPowerOn,
     required this.onTemperatureChanged,
+    this.onTemperatureChangeEnd,
   });
 
   @override
@@ -1192,6 +1209,11 @@ class _CircularTempSliderState extends State<_CircularTempSlider> {
         return GestureDetector(
           onPanUpdate: (details) => _handleDrag(details.localPosition, size),
           onPanStart: (details) => _handleDrag(details.localPosition, size),
+          onPanEnd: (_) {
+            if (widget.isPowerOn && widget.onTemperatureChangeEnd != null) {
+              widget.onTemperatureChangeEnd!(_currentTemp);
+            }
+          },
           child: SizedBox(
             width: size.width,
             height: size.height,
