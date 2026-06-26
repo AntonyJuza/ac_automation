@@ -352,4 +352,31 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<bool> changeTemperature({
+    required String deviceId,
+    required int temp,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/temperature',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'temp': temp}),
+      );
+      _checkResponse(response);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Change Temperature Error: $e');
+      return false;
+    }
+  }
 }

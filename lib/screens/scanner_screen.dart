@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/services/api_service.dart';
@@ -30,6 +32,8 @@ class _ScannerScreenState extends State<ScannerScreen>
     with SingleTickerProviderStateMixin {
   final _manualIdController = TextEditingController();
   late AnimationController _laserController;
+  final MobileScannerController _scannerController = MobileScannerController();
+  bool _cameraPermissionGranted = false;
 
   PipelineStep _step = PipelineStep.scanning;
   String _targetDeviceId = '';
@@ -61,6 +65,14 @@ class _ScannerScreenState extends State<ScannerScreen>
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
+    _requestCameraPermission();
+  }
+
+  Future<void> _requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    setState(() {
+      _cameraPermissionGranted = status.isGranted;
+    });
   }
 
   @override
@@ -68,6 +80,7 @@ class _ScannerScreenState extends State<ScannerScreen>
     _manualIdController.dispose();
     _wifiPasswordController.dispose();
     _laserController.dispose();
+    _scannerController.dispose();
     _bleStatusSub?.cancel();
     super.dispose();
   }
@@ -87,24 +100,18 @@ class _ScannerScreenState extends State<ScannerScreen>
       final acProvider = Provider.of<ACProvider>(context, listen: false);
 
       if (deviceData != null) {
-        // Device exists in cloud! Check if it's currently online
-        final isOnline = deviceData['online'] == true;
-        if (isOnline) {
-          setState(() {
-            _pipelineStatus = 'Device found online! Claiming device...';
-          });
-          final claimed = await acProvider.claimCloudDevice(_targetDeviceId);
-          if (claimed) {
-            _completePipeline();
-          } else {
-            throw Exception('Failed to claim device in your profile.');
-          }
+        // Device exists in cloud! Add device to user's account and finish.
+        setState(() {
+          _pipelineStatus = 'Device found in database! Claiming device...';
+        });
+        final claimed = await acProvider.claimCloudDevice(_targetDeviceId);
+        if (claimed) {
+          _completePipeline();
         } else {
-          // Device is offline, need BLE fallback
-          _startBleFallback();
+          throw Exception('Failed to claim device in your profile.');
         }
       } else {
-        // Brand new device (doesn't exist in database yet)
+        // Device not found -> Scan BLE advertisements
         _startBleFallback(isBrandNew: true);
       }
     } catch (e) {
@@ -112,6 +119,7 @@ class _ScannerScreenState extends State<ScannerScreen>
         _step = PipelineStep.scanning;
         _pipelineError = e.toString().replaceAll('Exception: ', '');
       });
+      _scannerController.start();
     }
   }
 
@@ -120,7 +128,7 @@ class _ScannerScreenState extends State<ScannerScreen>
     setState(() {
       _step = PipelineStep.offlineBleScan;
       _pipelineStatus =
-          'Device is offline. Scanning for local BLE broadcast...';
+          'Scanning for local BLE broadcast...';
     });
 
     final bleService = Provider.of<BLEService>(context, listen: false);
@@ -131,7 +139,7 @@ class _ScannerScreenState extends State<ScannerScreen>
     Timer(const Duration(seconds: 4), () async {
       await bleService.stopScan();
 
-      // Find device matching our target device ID in scan results
+      // Find BLE device with same Device ID
       dynamic matchingResult;
       for (final r in bleService.scanResults) {
         final name = r.device.platformName.isNotEmpty
@@ -147,7 +155,7 @@ class _ScannerScreenState extends State<ScannerScreen>
       }
 
       if (matchingResult != null) {
-        // Connect to BLE
+        // Connect automatically
         setState(() {
           _step = PipelineStep.bleConnecting;
           _pipelineStatus = 'Found device via BLE! Connecting...';
@@ -167,6 +175,7 @@ class _ScannerScreenState extends State<ScannerScreen>
             _step = PipelineStep.scanning;
             _pipelineError = 'Bluetooth connection failed: $e';
           });
+          _scannerController.start();
         }
       } else {
         setState(() {
@@ -174,6 +183,7 @@ class _ScannerScreenState extends State<ScannerScreen>
           _pipelineError =
               'Could not find local BLE signal for $_targetDeviceId. Make sure it is powered on.';
         });
+        _scannerController.start();
       }
     });
   }
@@ -246,6 +256,7 @@ class _ScannerScreenState extends State<ScannerScreen>
         _pipelineError =
             'Wi-Fi connection verified but profile registration failed.';
       });
+      _scannerController.start();
     }
   }
 
@@ -291,6 +302,7 @@ class _ScannerScreenState extends State<ScannerScreen>
       context.go('/');
     });
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -394,11 +406,45 @@ class _ScannerScreenState extends State<ScannerScreen>
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  const Icon(
-                    Icons.qr_code_scanner,
-                    size: 80,
-                    color: AppColors.textSecondary,
-                  ),
+                  _cameraPermissionGranted
+                      ? MobileScanner(
+                          controller: _scannerController,
+                          onDetect: (capture) {
+                            final List<Barcode> barcodes = capture.barcodes;
+                            for (final barcode in barcodes) {
+                              final rawValue = barcode.rawValue;
+                              if (rawValue != null && rawValue.isNotEmpty) {
+                                _scannerController.stop();
+                                _startSmartPipeline(rawValue);
+                                break;
+                              }
+                            }
+                          },
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.camera_alt_outlined,
+                              size: 48,
+                              color: AppColors.textSecondary,
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Camera Access Required',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            TextButton(
+                              onPressed: _requestCameraPermission,
+                              child: const Text('Allow Camera'),
+                            ),
+                          ],
+                        ),
 
                   // Scanning reticle animation
                   AnimatedBuilder(
