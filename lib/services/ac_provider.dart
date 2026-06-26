@@ -15,6 +15,7 @@ class ACProvider with ChangeNotifier {
   int _offTimeMs = 300000;
   String _deviceId = 'UNKNOWN';
   bool _isWifiConnected = false;
+  bool _radarBypassed = false;
 
   List<Map<String, dynamic>> _cloudDevices = [];
   bool _isFetchingDevices = false;
@@ -30,6 +31,7 @@ class ACProvider with ChangeNotifier {
   int get offTimeMs => _offTimeMs;
   String get deviceId => _deviceId;
   bool get isWifiConnected => _isWifiConnected;
+  bool get radarBypassed => _radarBypassed;
 
   List<Map<String, dynamic>> get cloudDevices => _cloudDevices;
   bool get isFetchingDevices => _isFetchingDevices;
@@ -143,6 +145,12 @@ class ACProvider with ChangeNotifier {
           _isWifiConnected = wifiConn;
         }
       }
+      if (part.startsWith('RADAR=')) {
+        final val = part.split('=')[1] == 'BYPASS';
+        if (_radarBypassed != val) {
+          _radarBypassed = val;
+        }
+      }
     }
     notifyListeners();
   }
@@ -178,6 +186,7 @@ class ACProvider with ChangeNotifier {
       _isAcOn = device['powerState'] ?? false;
       _isWifiConnected = device['online'] ?? false;
       _configName = device['activeConfigName'] ?? 'NONE';
+      _radarBypassed = device['radarBypassed'] ?? false;
 
       if (device['configData'] != null) {
         try {
@@ -198,6 +207,7 @@ class ACProvider with ChangeNotifier {
       _isAcOn = false;
       _isWifiConnected = false;
       _configName = 'NONE';
+      _radarBypassed = false;
     }
     notifyListeners();
   }
@@ -344,5 +354,19 @@ class ACProvider with ChangeNotifier {
       gmtOffset: gmtOffset,
       dstOffset: dstOffset,
     );
+  }
+
+  Future<bool> setRadarBypass(bool bypass) async {
+    if (_deviceId == 'UNKNOWN') return false;
+    final success = await ApiService.setRadarBypass(
+      deviceId: _deviceId,
+      bypass: bypass,
+    );
+    if (success) {
+      _radarBypassed = bypass;
+      notifyListeners();
+      return true;
+    }
+    return false;
   }
 }

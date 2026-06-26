@@ -318,4 +318,31 @@ class ApiService {
       return false;
     }
   }
+
+  static Future<bool> setRadarBypass({
+    required String deviceId,
+    required bool bypass,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/radar-bypass',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'bypass': bypass}),
+      );
+      _checkResponse(response);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Set Radar Bypass Error: $e');
+      return false;
+    }
+  }
 }

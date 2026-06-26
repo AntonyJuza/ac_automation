@@ -88,6 +88,9 @@ class _ControlScreenState extends State<ControlScreen>
         });
         _pageController.jumpToPage(index);
       }
+      setState(() {
+        _presenceAutomation = !acProvider.radarBypassed;
+      });
     });
   }
 
@@ -111,6 +114,7 @@ class _ControlScreenState extends State<ControlScreen>
       _isPowerOn = dev['powerState'] ?? false;
       _temperature = 22.0; // default template or last set
       _mode = 'Cool';
+      _presenceAutomation = !(dev['radarBypassed'] ?? false);
     });
 
     if (_isPowerOn) {
@@ -407,6 +411,7 @@ class _ControlScreenState extends State<ControlScreen>
                     activeConfigName: configBrand,
                   );
                   await acProvider.setCloudTiming(onMs, offMs);
+                  await acProvider.setRadarBypass(!isPresenceOn);
                   await acProvider.fetchCloudDevices();
 
                   setState(() {
@@ -850,6 +855,39 @@ class _ControlScreenState extends State<ControlScreen>
                             textAlign: TextAlign.center,
                           ),
 
+                          if (isOnline && _isPowerOn && !(activeDevice['presence'] ?? false) && (activeDevice['radarBypassed'] ?? false))
+                            Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppColors.statusRed.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                  color: AppColors.statusRed.withOpacity(0.3),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(
+                                    Icons.warning_amber_rounded,
+                                    color: AppColors.statusRed,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Radar is bypassed, AC is ON, but no one is in the room.',
+                                      style: TextStyle(
+                                        color: AppColors.statusRed.withOpacity(0.9),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
                           const SizedBox(height: 24),
 
                           // TEMPERATURE CIRCULAR SLIDER
@@ -1011,10 +1049,23 @@ class _ControlScreenState extends State<ControlScreen>
 
                               // Presence automation status
                               GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _presenceAutomation = !_presenceAutomation;
-                                  });
+                                onTap: () async {
+                                  final nextState = !_presenceAutomation;
+                                  final success = await acProvider.setRadarBypass(!nextState);
+                                  if (success) {
+                                    setState(() {
+                                      _presenceAutomation = nextState;
+                                    });
+                                  } else {
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Failed to update Radar Bypass state.'),
+                                          backgroundColor: AppColors.statusRed,
+                                        ),
+                                      );
+                                    }
+                                  }
                                 },
                                 child: Column(
                                   children: [

@@ -106,6 +106,83 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    // Warning Banners for devices with AC ON, radar bypassed, and no one present
+                    ...acProvider.cloudDevices.where((device) {
+                      final isOnline = device['online'] ?? false;
+                      final isAcOn = device['powerState'] ?? false;
+                      final isPresence = device['presence'] ?? false;
+                      final isRadarBypassed = device['radarBypassed'] ?? false;
+                      return isOnline && isAcOn && !isPresence && isRadarBypassed;
+                    }).map((device) {
+                      final deviceName = device['deviceName'] ?? 'Smart AC Node';
+                      final deviceId = device['deviceId'] ?? '';
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppColors.statusRed.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.statusRed.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.statusRed.withOpacity(0.12),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.warning_amber_rounded,
+                                color: AppColors.statusRed,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '$deviceName Alert',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'Radar is bypassed, AC is ON, but no one is in the room.',
+                                    style: TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.power_settings_new_rounded,
+                                color: AppColors.statusRed,
+                              ),
+                              onPressed: () async {
+                                final success = await ApiService.toggleDevicePower(
+                                  deviceId,
+                                  false,
+                                );
+                                if (success) {
+                                  acProvider.fetchCloudDevices();
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ]),
                 ),
               ),
