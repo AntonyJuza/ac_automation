@@ -187,6 +187,8 @@ class ACProvider with ChangeNotifier {
       _isWifiConnected = device['online'] ?? false;
       _configName = device['activeConfigName'] ?? 'NONE';
       _radarBypassed = device['radarBypassed'] ?? false;
+      _isPresenceDetected = device['presence'] ?? false;
+      _presenceStatus = _isPresenceDetected ? 'YES' : 'NONE';
 
       if (device['configData'] != null) {
         try {
@@ -208,6 +210,8 @@ class ACProvider with ChangeNotifier {
       _isWifiConnected = false;
       _configName = 'NONE';
       _radarBypassed = false;
+      _isPresenceDetected = false;
+      _presenceStatus = 'NONE';
     }
     notifyListeners();
   }
@@ -237,8 +241,6 @@ class ACProvider with ChangeNotifier {
         } else {
           selectDevice(null);
         }
-
-        await _fetchLatestPresenceForSelectedDevice();
       }
     } catch (e) {
       debugPrint('Error fetching cloud devices: $e');
@@ -248,39 +250,7 @@ class ACProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _fetchLatestPresenceForSelectedDevice() async {
-    if (_selectedDevice == null) return;
-    final devId = _selectedDevice!['deviceId'];
-    try {
-      final events = await ApiService.getEvents();
-      if (events != null && events.isNotEmpty) {
-        final devEvent = events.firstWhere(
-          (e) => e['device_id'] == devId,
-          orElse: () => <String, dynamic>{},
-        );
-        if (devEvent.isNotEmpty) {
-          final presenceVal = devEvent['presence'];
-          final eventName = devEvent['event'] ?? '';
 
-          if (presenceVal == true || presenceVal == 1) {
-            _isPresenceDetected = true;
-            _presenceStatus = 'YES';
-          } else {
-            _isPresenceDetected = false;
-            _presenceStatus = 'NONE';
-          }
-
-          if (eventName == 'AC_ON') {
-            _isAcOn = true;
-          } else if (eventName == 'AC_OFF') {
-            _isAcOn = false;
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching latest presence: $e');
-    }
-  }
 
   Future<bool> claimCloudDevice(String deviceId) async {
     final success = await ApiService.claimDevice(deviceId);

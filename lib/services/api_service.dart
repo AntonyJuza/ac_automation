@@ -132,8 +132,15 @@ class ApiService {
 
       _checkResponse(response);
       if (response.statusCode == 200) {
-        final List<dynamic> list = jsonDecode(response.body);
-        return list.map((item) => item as Map<String, dynamic>).toList();
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          if (decoded['success'] == true) {
+            final List<dynamic> list = decoded['data'] ?? [];
+            return list.map((item) => item as Map<String, dynamic>).toList();
+          }
+        } else if (decoded is List) {
+          return decoded.map((item) => item as Map<String, dynamic>).toList();
+        }
       }
       debugPrint('Get Events failed: HTTP ${response.statusCode}');
       return null;
