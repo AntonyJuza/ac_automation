@@ -7,6 +7,7 @@ import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/api_service.dart';
 import 'package:ac_automation/models/ac_profile.dart';
 import 'dart:math' as math;
+import 'dart:async';
 
 class ControlScreen extends StatefulWidget {
   final ACProfile profile;
@@ -20,6 +21,7 @@ class _ControlScreenState extends State<ControlScreen>
     with TickerProviderStateMixin {
   late PageController _pageController;
   int _activeDeviceIndex = 0;
+  Timer? _pollTimer;
 
   // AC States
   double _temperature = 22.0;
@@ -91,11 +93,19 @@ class _ControlScreenState extends State<ControlScreen>
       setState(() {
         _presenceAutomation = !acProvider.radarBypassed;
       });
+
+      // Poll cloud devices status every 5 seconds while on this screen
+      _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (mounted && acProvider.cloudDevices.isNotEmpty) {
+          acProvider.fetchCloudDevices();
+        }
+      });
     });
   }
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     _pageController.dispose();
     _breathController.dispose();
     _airflowController.dispose();
@@ -152,6 +162,7 @@ class _ControlScreenState extends State<ControlScreen>
       text: device['deviceName'] ?? 'Smart AC Node',
     );
     bool isPresenceOn = _presenceAutomation;
+    int selectedDefaultTemp = device['configData']?['defaultTurnOnTemp'] ?? 0;
     // Get delays in seconds
     double onTimeSec = (acProvider.onTimeMs / 1000.0).clamp(5.0, 120.0);
     double offTimeSec = (acProvider.offTimeMs / 1000.0).clamp(10.0, 600.0);
@@ -375,6 +386,66 @@ class _ControlScreenState extends State<ControlScreen>
                   ),
                   const SizedBox(height: 16),
 
+                  // Default Turn-On Temperature dropdown
+                  const Text(
+                    'Default Turn-On Temperature',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.04),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black.withOpacity(0.12)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: selectedDefaultTemp,
+                        dropdownColor: AppColors.primaryBackground,
+                        style: const TextStyle(color: AppColors.textPrimary),
+                        items: [
+                          const DropdownMenuItem<int>(
+                            value: 0,
+                            child: Text(
+                              'Standard (Power ON button)',
+                              style: TextStyle(color: AppColors.textPrimary),
+                            ),
+                          ),
+                          ...List.generate(15, (index) {
+                            final temp = 16 + index;
+                            // Check if this temp button exists in the learned buttons
+                            final hasTempPattern = device['configData']?['buttons']?['temp_$temp'] != null;
+                            return DropdownMenuItem<int>(
+                              value: temp,
+                              child: Text(
+                                '$temp°C${hasTempPattern ? "" : " (Not Learned)"}',
+                                style: TextStyle(
+                                  color: hasTempPattern
+                                      ? AppColors.textPrimary
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setDialogState(() {
+                              selectedDefaultTemp = val;
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
                   OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(dialogCtx);
@@ -421,6 +492,7 @@ class _ControlScreenState extends State<ControlScreen>
                     deviceId: device['deviceId'],
                     deviceName: newName,
                     activeConfigName: configBrand,
+                    defaultTurnOnTemp: selectedDefaultTemp,
                   );
                   await acProvider.setCloudTiming(onMs, offMs);
                   await acProvider.setRadarBypass(!isPresenceOn);
@@ -471,6 +543,25 @@ class _ControlScreenState extends State<ControlScreen>
         appBar: AppBar(title: const Text('Device Control')),
         body: const Center(child: Text('No active device selected.')),
       );
+    }
+
+    // Sync local state when backend state changes (e.g. from sensor turning AC on/off)
+    final serverPower = activeDevice['powerState'] ?? false;
+    if (serverPower != _isPowerOn) {
+      _isPowerOn = serverPower;
+      if (_isPowerOn) {
+        _airflowController.repeat();
+      } else {
+        _airflowController.stop();
+      }
+    }
+
+    final config = activeDevice['configData'];
+    if (config != null && config['temperature'] != null) {
+      final serverTemp = (config['temperature'] as num).toDouble();
+      if (serverTemp != _temperature) {
+        _temperature = serverTemp;
+      }
     }
 
     final isOnline = activeDevice['online'] ?? false;

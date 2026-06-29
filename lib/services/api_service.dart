@@ -21,6 +21,7 @@ class ApiService {
     String? deviceName,
     String? activeConfigName,
     Map<String, dynamic>? configData,
+    int? defaultTurnOnTemp,
   }) async {
     try {
       final url = Uri.parse('${APIConstants.baseUrl}/devices/sync');
@@ -29,6 +30,7 @@ class ApiService {
         if (deviceName != null) 'deviceName': deviceName,
         if (activeConfigName != null) 'activeConfigName': activeConfigName,
         if (configData != null) 'configData': configData,
+        if (defaultTurnOnTemp != null) 'defaultTurnOnTemp': defaultTurnOnTemp,
       };
 
       final prefs = await SharedPreferences.getInstance();
