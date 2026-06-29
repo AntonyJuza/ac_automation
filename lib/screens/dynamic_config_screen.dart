@@ -15,8 +15,12 @@ class DynamicConfigScreen extends StatefulWidget {
 class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  final _acOnDataController = TextEditingController(text: "0x6408BF836, 0x7480000000A800");
-  final _acOffDataController = TextEditingController(text: "0x6400BF836, 0x7400000000A800");
+  final _acOnDataController = TextEditingController(
+    text: "0x6408BF836, 0x7480000000A800",
+  );
+  final _acOffDataController = TextEditingController(
+    text: "0x6400BF836, 0x7400000000A800",
+  );
   final _irFreqController = TextEditingController(text: "38");
   final _hdrMarkController = TextEditingController(text: "1050");
   final _hdrSpaceController = TextEditingController(text: "550");
@@ -52,7 +56,13 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
     final bleService = Provider.of<BLEService>(context, listen: false);
     if (!bleService.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not connected to BLE device', style: TextStyle(color: Colors.white)), backgroundColor: AppColors.statusRed),
+        const SnackBar(
+          content: Text(
+            'Not connected to BLE device',
+            style: TextStyle(color: Colors.white),
+          ),
+          backgroundColor: AppColors.statusRed,
+        ),
       );
       return;
     }
@@ -85,30 +95,57 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Configuration uploaded successfully!'), backgroundColor: AppColors.statusGreen),
+          const SnackBar(
+            content: Text('Configuration uploaded successfully!'),
+            backgroundColor: AppColors.statusGreen,
+          ),
         );
         context.pop();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to upload configuration.', style: TextStyle(color: Colors.white)), backgroundColor: AppColors.statusRed),
+          const SnackBar(
+            content: Text(
+              'Failed to upload configuration.',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: AppColors.statusRed,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e', style: const TextStyle(color: Colors.white)), backgroundColor: AppColors.statusRed),
+          SnackBar(
+            content: Text(
+              'Error: $e',
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: AppColors.statusRed,
+          ),
         );
       }
     } finally {
-      if (mounted) setState(() { _isUploading = false; _uploadProgress = 0.0; });
+      if (mounted)
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
     }
   }
 
   List<String> _parseHexArray(String input) {
-    return input.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return input
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, {bool isNumber = true}) {
+  Widget _buildTextField(
+    String label,
+    TextEditingController controller, {
+    bool isNumber = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: TextFormField(
@@ -158,39 +195,64 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
               ),
               const SizedBox(height: 24),
-              _buildTextField('AC ON Hex Data (comma separated)', _acOnDataController, isNumber: false),
-              _buildTextField('AC OFF Hex Data (comma separated)', _acOffDataController, isNumber: false),
+              _buildTextField(
+                'AC ON Hex Data (comma separated)',
+                _acOnDataController,
+                isNumber: false,
+              ),
+              _buildTextField(
+                'AC OFF Hex Data (comma separated)',
+                _acOffDataController,
+                isNumber: false,
+              ),
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Freq (kHz)', _irFreqController)),
+                  Expanded(
+                    child: _buildTextField('Freq (kHz)', _irFreqController),
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildTextField('Repeat', _sendRepeatController)),
+                  Expanded(
+                    child: _buildTextField('Repeat', _sendRepeatController),
+                  ),
                 ],
               ),
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Hdr Mark', _hdrMarkController)),
+                  Expanded(
+                    child: _buildTextField('Hdr Mark', _hdrMarkController),
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildTextField('Hdr Space', _hdrSpaceController)),
+                  Expanded(
+                    child: _buildTextField('Hdr Space', _hdrSpaceController),
+                  ),
                 ],
               ),
               Row(
                 children: [
-                  Expanded(child: _buildTextField('Bit Mark', _bitMarkController)),
+                  Expanded(
+                    child: _buildTextField('Bit Mark', _bitMarkController),
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildTextField('Bit Length', _bitLengthController)),
+                  Expanded(
+                    child: _buildTextField('Bit Length', _bitLengthController),
+                  ),
                 ],
               ),
               Row(
                 children: [
-                  Expanded(child: _buildTextField('One Space', _oneSpaceController)),
+                  Expanded(
+                    child: _buildTextField('One Space', _oneSpaceController),
+                  ),
                   const SizedBox(width: 16),
-                  Expanded(child: _buildTextField('Zero Space', _zeroSpaceController)),
+                  Expanded(
+                    child: _buildTextField('Zero Space', _zeroSpaceController),
+                  ),
                 ],
               ),
               _buildTextField('Stop Mark', _stopMarkController),
               const SizedBox(height: 24),
-              if (_isUploading) ...[                Container(
+              if (_isUploading) ...[
+                Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: AppColors.primaryBackground,
@@ -227,7 +289,9 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
                           value: _uploadProgress,
                           minHeight: 8,
                           backgroundColor: AppColors.secondaryBackground,
-                          valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primaryBrand),
+                          valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.primaryBrand,
+                          ),
                         ),
                       ),
                     ],
@@ -239,11 +303,17 @@ class _DynamicConfigScreenState extends State<DynamicConfigScreen> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primaryBrand,
                     padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   child: const Text(
                     'Upload to ESP32',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
             ],

@@ -19,6 +19,7 @@ class AppStyles {
     offset: const Offset(0, 4),
   );
 }
+
 class BLEConstants {
   static const String serviceUuid = "12345678-1234-1234-1234-123456789abc";
   static const String charCommandUuid = "12345678-1234-1234-1234-123456789001";
@@ -27,5 +28,5 @@ class BLEConstants {
 }
 
 class APIConstants {
-  static const String baseUrl = "http://192.168.1.47:3000/rest/v1";
+  static const String baseUrl = "https://iot.techenablesme.com/api";
 }

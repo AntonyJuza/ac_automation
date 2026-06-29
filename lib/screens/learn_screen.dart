@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ac_automation/utils/constants.dart';
 import 'package:ac_automation/models/ac_profile.dart';
@@ -12,28 +13,160 @@ import 'package:ac_automation/services/api_service.dart';
 
 // Each button step definition
 class _ButtonStep {
-  final String key;        // stored in profile, sent to ESP32
-  final String label;      // shown to user
+  final String key; // stored in profile, sent to ESP32
+  final String label; // shown to user
   final IconData icon;
+  final String? assetPath; // optional asset image path
   final bool optional;
 
   const _ButtonStep({
     required this.key,
     required this.label,
     required this.icon,
+    this.assetPath,
     this.optional = false,
   });
 }
 
 const List<_ButtonStep> _steps = [
-  _ButtonStep(key: 'power_off',  label: 'Power OFF',   icon: Icons.power_settings_new),
-  _ButtonStep(key: 'power_on',   label: 'Power ON',    icon: Icons.power_settings_new),
-  _ButtonStep(key: 'temp_up',    label: 'Temp +',      icon: Icons.add_circle_outline, optional: true),
-  _ButtonStep(key: 'temp_down',  label: 'Temp −',      icon: Icons.remove_circle_outline, optional: true),
-  _ButtonStep(key: 'mode',       label: 'Mode',        icon: Icons.ac_unit, optional: true),
-  _ButtonStep(key: 'fan_speed',  label: 'Fan Speed',   icon: Icons.air, optional: true),
-  _ButtonStep(key: 'swing',      label: 'Swing',       icon: Icons.swap_vert,    optional: true),
-  _ButtonStep(key: 'sleep',      label: 'Sleep',       icon: Icons.nightlight_round, optional: true),
+  _ButtonStep(
+    key: 'power_off',
+    label: 'Power OFF',
+    icon: Icons.power_settings_new,
+  ),
+  _ButtonStep(
+    key: 'power_on',
+    label: 'Power ON',
+    icon: Icons.power_settings_new,
+  ),
+  _ButtonStep(
+    key: 'temp_up',
+    label: 'Temp +',
+    icon: Icons.add_circle_outline,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_down',
+    label: 'Temp −',
+    icon: Icons.remove_circle_outline,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_16',
+    label: 'Temp 16°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_17',
+    label: 'Temp 17°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_18',
+    label: 'Temp 18°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_19',
+    label: 'Temp 19°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_20',
+    label: 'Temp 20°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_21',
+    label: 'Temp 21°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_22',
+    label: 'Temp 22°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_23',
+    label: 'Temp 23°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_24',
+    label: 'Temp 24°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_25',
+    label: 'Temp 25°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_26',
+    label: 'Temp 26°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_27',
+    label: 'Temp 27°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_28',
+    label: 'Temp 28°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_29',
+    label: 'Temp 29°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'temp_30',
+    label: 'Temp 30°C',
+    icon: Icons.thermostat_outlined,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'mode',
+    label: 'Mode',
+    icon: Icons.ac_unit,
+    assetPath: 'assets/20.png',
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'fan_speed',
+    label: 'Fan Speed',
+    icon: Icons.air,
+    assetPath: 'assets/20.png',
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'swing',
+    label: 'Swing',
+    icon: Icons.swap_vert,
+    optional: true,
+  ),
+  _ButtonStep(
+    key: 'sleep',
+    label: 'Sleep',
+    icon: Icons.nightlight_round,
+    optional: true,
+  ),
 ];
 
 class LearnScreen extends StatefulWidget {
@@ -55,7 +188,7 @@ class LearnScreen extends StatefulWidget {
 class _LearnScreenState extends State<LearnScreen> {
   int _currentStep = 0;
   final Map<String, IRButton> _capturedData = {};
-  
+
   // null = idle, true = waiting for hardware, false = captured/error
   bool _isCapturing = false;
   String? _captureError;
@@ -66,7 +199,15 @@ class _LearnScreenState extends State<LearnScreen> {
   String _uploadStatus = '';
   double? _uploadProgress;
 
+  Timer? _cloudPollTimer;
+
   bool get _isComplete => _currentStep >= _steps.length;
+
+  @override
+  void dispose() {
+    _cloudPollTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,9 +224,7 @@ class _LearnScreenState extends State<LearnScreen> {
         children: [
           _buildProgressHeader(),
           Expanded(
-            child: _isComplete
-                ? _buildReviewArea()
-                : _buildCaptureArea(),
+            child: _isComplete ? _buildReviewArea() : _buildCaptureArea(),
           ),
         ],
       ),
@@ -169,6 +308,19 @@ class _LearnScreenState extends State<LearnScreen> {
                       color: AppColors.primaryBrand,
                     ),
                   )
+                : step.assetPath != null
+                ? ColorFiltered(
+                    colorFilter: const ColorFilter.mode(
+                      AppColors.primaryBrand,
+                      BlendMode.srcIn,
+                    ),
+                    child: Image.asset(
+                      step.assetPath!,
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.contain,
+                    ),
+                  )
                 : Icon(step.icon, size: 80, color: AppColors.primaryBrand),
           ),
           const SizedBox(height: 32),
@@ -184,7 +336,10 @@ class _LearnScreenState extends State<LearnScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primaryBrand.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -223,8 +378,11 @@ class _LearnScreenState extends State<LearnScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.error_outline,
-                      color: AppColors.statusRed, size: 18),
+                  const Icon(
+                    Icons.error_outline,
+                    color: AppColors.statusRed,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -250,14 +408,18 @@ class _LearnScreenState extends State<LearnScreen> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.check_circle,
-                      color: AppColors.statusGreen, size: 18),
+                  Icon(
+                    Icons.check_circle,
+                    color: AppColors.statusGreen,
+                    size: 18,
+                  ),
                   SizedBox(width: 8),
                   Text(
                     'Captured successfully!',
                     style: TextStyle(
-                        color: AppColors.statusGreen,
-                        fontWeight: FontWeight.w600),
+                      color: AppColors.statusGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -274,15 +436,17 @@ class _LearnScreenState extends State<LearnScreen> {
                   backgroundColor: AppColors.primaryBrand,
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
                   'Ready — Press the button now',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -296,7 +460,8 @@ class _LearnScreenState extends State<LearnScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     side: const BorderSide(color: AppColors.textSecondary),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   child: const Text(
                     'Skip (optional)',
@@ -313,7 +478,8 @@ class _LearnScreenState extends State<LearnScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   side: const BorderSide(color: AppColors.statusRed),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
                 child: const Text(
                   'Cancel',
@@ -335,8 +501,11 @@ class _LearnScreenState extends State<LearnScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.check_circle,
-              color: AppColors.statusGreen, size: 48),
+          const Icon(
+            Icons.check_circle,
+            color: AppColors.statusGreen,
+            size: 48,
+          ),
           const SizedBox(height: 16),
           const Text(
             'All Done!',
@@ -350,7 +519,10 @@ class _LearnScreenState extends State<LearnScreen> {
           Text(
             'Profile for ${widget.brand} is ready.\n${_capturedData.length} buttons captured.',
             style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 15, height: 1.5),
+              color: AppColors.textSecondary,
+              fontSize: 15,
+              height: 1.5,
+            ),
           ),
           const SizedBox(height: 24),
           Expanded(
@@ -362,7 +534,9 @@ class _LearnScreenState extends State<LearnScreen> {
                 final captured = _capturedData.containsKey(step.key);
                 return ListTile(
                   leading: Icon(
-                    captured ? Icons.check_circle : Icons.radio_button_unchecked,
+                    captured
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
                     color: captured
                         ? AppColors.statusGreen
                         : AppColors.textSecondary,
@@ -384,20 +558,27 @@ class _LearnScreenState extends State<LearnScreen> {
                               ? 'encoded ${_capturedData[step.key]!.bits} bits'
                               : 'raw ${_capturedData[step.key]!.rawData?.length ?? 0} values',
                           style: const TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary),
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
                         )
-                      : const Text('Skipped',
+                      : const Text(
+                          'Skipped',
                           style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.textSecondary)),
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
                   trailing: captured
                       ? TextButton(
                           onPressed: () => _reRecordStep(index),
-                          child: const Text('Re-record',
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.primaryBrand)),
+                          child: const Text(
+                            'Re-record',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.primaryBrand,
+                            ),
+                          ),
                         )
                       : null,
                 );
@@ -411,7 +592,9 @@ class _LearnScreenState extends State<LearnScreen> {
               decoration: BoxDecoration(
                 color: AppColors.secondaryBackground,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.primaryBrand.withValues(alpha: 0.2)),
+                border: Border.all(
+                  color: AppColors.primaryBrand.withValues(alpha: 0.2),
+                ),
               ),
               child: Column(
                 children: [
@@ -444,15 +627,17 @@ class _LearnScreenState extends State<LearnScreen> {
                   backgroundColor: AppColors.statusGreen,
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
                 child: const Text(
                   'Save Profile to Device',
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -465,9 +650,18 @@ class _LearnScreenState extends State<LearnScreen> {
 
   void _startCapture() async {
     final bleService = Provider.of<BLEService>(context, listen: false);
+    final acProvider = Provider.of<ACProvider>(context, listen: false);
 
-    if (!bleService.isConnected) {
-      setState(() => _captureError = 'Not connected to device. Go back and connect first.');
+    final isBleConnected = bleService.isConnected;
+    final isCloudOnline =
+        acProvider.selectedDevice?['online'] == true ||
+        acProvider.isWifiConnected;
+
+    if (!isBleConnected && !isCloudOnline) {
+      setState(
+        () => _captureError =
+            'Device is offline. Connect via Bluetooth or check Cloud status.',
+      );
       return;
     }
 
@@ -477,34 +671,132 @@ class _LearnScreenState extends State<LearnScreen> {
       _lastCaptureSuccess = false;
     });
 
-    final irButton = await bleService.captureIRButton(
-      timeout: const Duration(seconds: 20),
-    );
+    if (isBleConnected) {
+      final irButton = await bleService.captureIRButton(
+        timeout: const Duration(seconds: 20),
+      );
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    if (irButton != null && irButton.isValid) {
-      final key = _steps[_currentStep].key;
-      setState(() {
-        _capturedData[key] = irButton;
-        _isCapturing = false;
-        _lastCaptureSuccess = true;
-        _captureError = null;
-      });
-      // Auto-advance after short delay so user sees success message
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (mounted) setState(() => _currentStep++);
+      if (irButton != null && irButton.isValid) {
+        final key = _steps[_currentStep].key;
+        setState(() {
+          _capturedData[key] = irButton;
+          _isCapturing = false;
+          _lastCaptureSuccess = true;
+          _captureError = null;
+        });
+        // Auto-advance after short delay so user sees success message
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) setState(() => _currentStep++);
+      } else {
+        setState(() {
+          _isCapturing = false;
+          _captureError =
+              'No signal received. Make sure the remote is pointing at the device and try again.';
+        });
+      }
     } else {
-      setState(() {
-        _isCapturing = false;
-        _captureError = 'No signal received. Make sure the remote is pointing at the device and try again.';
+      final started = await acProvider.startCloudLearn();
+      if (!started) {
+        if (mounted) {
+          setState(() {
+            _isCapturing = false;
+            _captureError = 'Failed to start learning mode via Cloud.';
+          });
+        }
+        return;
+      }
+
+      int pollCount = 0;
+      const maxPolls =
+          15; // 15 * 1.5s = 22.5s timeout (similar to 20s BLE timeout)
+
+      _cloudPollTimer?.cancel();
+      _cloudPollTimer = Timer.periodic(const Duration(milliseconds: 1500), (
+        timer,
+      ) async {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          timer.cancel();
+          await acProvider.stopCloudLearn();
+          if (mounted) {
+            setState(() {
+              _isCapturing = false;
+              _captureError = 'Capture timed out. No signal received.';
+            });
+          }
+          return;
+        }
+
+        final res = await acProvider.fetchCapturedIr();
+        if (res != null && res['success'] == true && res['captured'] == true) {
+          timer.cancel();
+          await acProvider.stopCloudLearn();
+
+          final dataMap = res['data'] as Map<String, dynamic>;
+          final method = dataMap['method'] as String;
+          IRButton? button;
+          if (method == 'encoded') {
+            button = IRButton(
+              name: '',
+              method: IRMethod.encoded,
+              hexData: (dataMap['data'] as List?)
+                  ?.map((e) => e.toString())
+                  .toList(),
+              bits: dataMap['bits'] as int?,
+              hdrMark: dataMap['hdr_mark'] as int?,
+              hdrSpace: dataMap['hdr_space'] as int?,
+              bitMark: dataMap['bit_mark'] as int?,
+              oneSpace: dataMap['one_space'] as int?,
+              zeroSpace: dataMap['zero_space'] as int?,
+            );
+          } else if (method == 'raw') {
+            button = IRButton(
+              name: '',
+              method: IRMethod.raw,
+              rawData: (dataMap['data'] as List?)
+                  ?.map((e) => int.tryParse(e.toString()) ?? 0)
+                  .toList(),
+            );
+          }
+
+          if (mounted) {
+            if (button != null && button.isValid) {
+              final key = _steps[_currentStep].key;
+              setState(() {
+                _capturedData[key] = button!;
+                _isCapturing = false;
+                _lastCaptureSuccess = true;
+                _captureError = null;
+              });
+              await Future.delayed(const Duration(milliseconds: 800));
+              if (mounted) setState(() => _currentStep++);
+            } else {
+              setState(() {
+                _isCapturing = false;
+                _captureError = 'Received invalid IR signal format from Cloud.';
+              });
+            }
+          }
+        }
       });
     }
   }
 
-  void _cancelCapture() {
+  void _cancelCapture() async {
     final bleService = Provider.of<BLEService>(context, listen: false);
-    bleService.stopLearnMode();
+    final acProvider = Provider.of<ACProvider>(context, listen: false);
+
+    _cloudPollTimer?.cancel();
+    _cloudPollTimer = null;
+
+    if (bleService.isConnected) {
+      await bleService.stopLearnMode();
+    } else {
+      await acProvider.stopCloudLearn();
+    }
+
     setState(() {
       _isCapturing = false;
       _captureError = null;
@@ -544,18 +836,21 @@ class _LearnScreenState extends State<LearnScreen> {
       brand: widget.brand,
       model: widget.model,
       buttons: _capturedData.map(
-        (key, value) => MapEntry(key, IRButton(
-          name:      key,
-          method:    value.method,
-          hexData:   value.hexData,
-          bits:      value.bits,
-          hdrMark:   value.hdrMark,
-          hdrSpace:  value.hdrSpace,
-          bitMark:   value.bitMark,
-          oneSpace:  value.oneSpace,
-          zeroSpace: value.zeroSpace,
-          rawData:   value.rawData,
-        )),
+        (key, value) => MapEntry(
+          key,
+          IRButton(
+            name: key,
+            method: value.method,
+            hexData: value.hexData,
+            bits: value.bits,
+            hdrMark: value.hdrMark,
+            hdrSpace: value.hdrSpace,
+            bitMark: value.bitMark,
+            oneSpace: value.oneSpace,
+            zeroSpace: value.zeroSpace,
+            rawData: value.rawData,
+          ),
+        ),
       ),
       createdAt: DateTime.now(),
     );
@@ -571,34 +866,36 @@ class _LearnScreenState extends State<LearnScreen> {
     // 2. Upload to ESP32 via Dynamic Config (VAR_START/VAR_CHUNK/VAR_END)
     if (bleService.isConnected) {
       // Extract timing from the power_on button (the primary reference)
-      final powerOn  = _capturedData['power_on'];
+      final powerOn = _capturedData['power_on'];
       final powerOff = _capturedData['power_off'];
 
       if (powerOn != null && powerOn.isEncoded) {
         final configName = '${widget.brand}_${widget.model ?? "AC"}';
 
         final config = DynamicConfig(
-          acOnData:   powerOn.hexData ?? [],
-          acOffData:  powerOff?.hexData ?? powerOn.hexData ?? [],
-          irFreqKhz:  38,
-          hdrMark:    powerOn.hdrMark ?? 0,
-          hdrSpace:   powerOn.hdrSpace ?? 0,
-          bitMark:    powerOn.bitMark ?? 0,
-          oneSpace:   powerOn.oneSpace ?? 0,
-          zeroSpace:  powerOn.zeroSpace ?? 0,
-          stopMark:   powerOn.bitMark ?? 0,
-          bitLength:  powerOn.bits ?? 0,
+          acOnData: powerOn.hexData ?? [],
+          acOffData: powerOff?.hexData ?? powerOn.hexData ?? [],
+          irFreqKhz: 38,
+          hdrMark: powerOn.hdrMark ?? 0,
+          hdrSpace: powerOn.hdrSpace ?? 0,
+          bitMark: powerOn.bitMark ?? 0,
+          oneSpace: powerOn.oneSpace ?? 0,
+          zeroSpace: powerOn.zeroSpace ?? 0,
+          stopMark: powerOn.bitMark ?? 0,
+          bitLength: powerOn.bits ?? 0,
           sendRepeat: 3,
         );
 
         final saved = await bleService.sendDynamicConfig(
-          config, 
+          config,
           name: configName,
           onProgress: (progress) {
             if (mounted) {
               setState(() {
-                _uploadProgress = 0.1 + (progress * 0.7); // Progress from 0.1 to 0.8
-                _uploadStatus = 'Uploading to Device... ${(progress * 100).toInt()}%';
+                _uploadProgress =
+                    0.1 + (progress * 0.7); // Progress from 0.1 to 0.8
+                _uploadStatus =
+                    'Uploading to Device... ${(progress * 100).toInt()}%';
               });
             }
           },
@@ -623,7 +920,9 @@ class _LearnScreenState extends State<LearnScreen> {
     // 3. Sync full profile to cloud
     if (acProvider.deviceId != 'UNKNOWN') {
       final configName = '${widget.brand}_${widget.model ?? "AC"}';
-      debugPrint('[App] Synchronizing full profile to cloud for ${acProvider.deviceId}');
+      debugPrint(
+        '[App] Synchronizing full profile to cloud for ${acProvider.deviceId}',
+      );
       try {
         await ApiService.syncDevice(
           deviceId: acProvider.deviceId,

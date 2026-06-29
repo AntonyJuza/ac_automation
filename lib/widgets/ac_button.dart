@@ -31,11 +31,13 @@ class ACButton extends StatelessWidget {
             width: isCircular ? 64 : 80,
             height: 64,
             decoration: BoxDecoration(
-              color: isActive 
-                  ? (activeColor ?? AppColors.primaryBrand) 
+              color: isActive
+                  ? (activeColor ?? AppColors.primaryBrand)
                   : AppColors.primaryBackground,
               shape: isCircular ? BoxShape.circle : BoxShape.rectangle,
-              borderRadius: isCircular ? null : BorderRadius.circular(AppStyles.borderRadius),
+              borderRadius: isCircular
+                  ? null
+                  : BorderRadius.circular(AppStyles.borderRadius),
               boxShadow: [AppStyles.softShadow],
             ),
             child: Icon(

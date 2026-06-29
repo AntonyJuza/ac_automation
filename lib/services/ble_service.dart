@@ -11,8 +11,8 @@ enum BLEState { idle, scanning, connecting, connected, error }
 
 class BLECommands {
   static const String startLearn = 'LEARN_START';
-  static const String stopLearn  = 'LEARN_STOP';
-  static const String getStatus  = 'STATUS';
+  static const String stopLearn = 'LEARN_STOP';
+  static const String getStatus = 'STATUS';
 }
 
 class BLEService extends ChangeNotifier {
@@ -22,7 +22,7 @@ class BLEService extends ChangeNotifier {
 
   final List<ScanResult> _scanResults = [];
 
-  final _statusController  = StreamController<String>.broadcast();
+  final _statusController = StreamController<String>.broadcast();
   final _irButtonController = StreamController<IRButton>.broadcast();
 
   StreamSubscription? _statusSub;
@@ -37,13 +37,13 @@ class BLEService extends ChangeNotifier {
   final StringBuffer _encBuffer = StringBuffer();
   bool _encReceiving = false;
 
-  BLEState          get state           => _state;
-  bool              get isConnected     => _device != null && _device!.isConnected;
-  bool              get isScanning      => _state == BLEState.scanning;
-  BluetoothDevice?  get device          => _device;
-  List<ScanResult>  get scanResults     => List.unmodifiable(_scanResults);
-  Stream<String>    get statusStream    => _statusController.stream;
-  Stream<IRButton>  get irButtonStream  => _irButtonController.stream;
+  BLEState get state => _state;
+  bool get isConnected => _device != null && _device!.isConnected;
+  bool get isScanning => _state == BLEState.scanning;
+  BluetoothDevice? get device => _device;
+  List<ScanResult> get scanResults => List.unmodifiable(_scanResults);
+  Stream<String> get statusStream => _statusController.stream;
+  Stream<IRButton> get irButtonStream => _irButtonController.stream;
 
   // ---------- Scan ----------
 
@@ -61,15 +61,19 @@ class BLEService extends ChangeNotifier {
       _scanSub = FlutterBluePlus.scanResults.listen((results) {
         bool changed = false;
         for (final r in results) {
-          final name = r.device.platformName.isNotEmpty 
-              ? r.device.platformName 
+          final name = r.device.platformName.isNotEmpty
+              ? r.device.platformName
               : r.advertisementData.advName;
-          
-          // Allow any device whose name starts with AC_ or ESP_, or unnamed devices
-          if (name.isNotEmpty && !name.startsWith('AC_') && !name.startsWith('ESP_')) continue;
 
-          final idx = _scanResults
-              .indexWhere((s) => s.device.remoteId == r.device.remoteId);
+          // Allow any device whose name starts with AC_ or ESP_, or unnamed devices
+          if (name.isNotEmpty &&
+              !name.startsWith('AC_') &&
+              !name.startsWith('ESP_'))
+            continue;
+
+          final idx = _scanResults.indexWhere(
+            (s) => s.device.remoteId == r.device.remoteId,
+          );
           if (idx >= 0) {
             _scanResults[idx] = r;
             changed = true;
@@ -80,9 +84,7 @@ class BLEService extends ChangeNotifier {
         }
         if (changed) notifyListeners();
       });
-      await FlutterBluePlus.startScan(
-        timeout: const Duration(seconds: 10),
-      );
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
       if (_state == BLEState.scanning) _setState(BLEState.idle);
     } catch (e) {
       debugPrint('[BLE] Scan error: $e');
@@ -127,9 +129,9 @@ class BLEService extends ChangeNotifier {
     _statusSub?.cancel();
     _irDataSub?.cancel();
     _cmdChar = null;
-    _device  = null;
+    _device = null;
     _irChunkBuffer.clear();
-    _irReceiving  = false;
+    _irReceiving = false;
     _encReceiving = false;
     _encBuffer.clear();
     _setState(BLEState.idle);
@@ -170,7 +172,9 @@ class BLEService extends ChangeNotifier {
       }
     }
     if (_cmdChar == null) {
-      throw Exception('Command characteristic not found. Check ESP32 firmware UUIDs.');
+      throw Exception(
+        'Command characteristic not found. Check ESP32 firmware UUIDs.',
+      );
     }
   }
 
@@ -234,7 +238,9 @@ class BLEService extends ChangeNotifier {
           .toList();
       debugPrint('[BLE] Raw IR parsed: ${parsed.length} values');
       if (parsed.isNotEmpty) {
-        _irButtonController.add(IRButton(name: '', method: IRMethod.raw, rawData: parsed));
+        _irButtonController.add(
+          IRButton(name: '', method: IRMethod.raw, rawData: parsed),
+        );
       }
       return;
     }
@@ -246,18 +252,20 @@ class BLEService extends ChangeNotifier {
     try {
       final map = json.decode(jsonStr) as Map<String, dynamic>;
       final button = IRButton(
-        name:      '',
-        method:    IRMethod.encoded,
-        hexData:   (map['data'] as List?)?.map((e) => e.toString()).toList(),
-        bits:      map['bits'] as int?,
-        hdrMark:   map['hdr_mark'] as int?,
-        hdrSpace:  map['hdr_space'] as int?,
-        bitMark:   map['bit_mark'] as int?,
-        oneSpace:  map['one_space'] as int?,
+        name: '',
+        method: IRMethod.encoded,
+        hexData: (map['data'] as List?)?.map((e) => e.toString()).toList(),
+        bits: map['bits'] as int?,
+        hdrMark: map['hdr_mark'] as int?,
+        hdrSpace: map['hdr_space'] as int?,
+        bitMark: map['bit_mark'] as int?,
+        oneSpace: map['one_space'] as int?,
         zeroSpace: map['zero_space'] as int?,
       );
       if (button.isValid) {
-        debugPrint('[BLE] Encoded IR ready: ${button.bits} bits, ${button.hexData}');
+        debugPrint(
+          '[BLE] Encoded IR ready: ${button.bits} bits, ${button.hexData}',
+        );
         _irButtonController.add(button);
       } else {
         debugPrint('[BLE] Encoded IR invalid after parse');
@@ -281,13 +289,17 @@ class BLEService extends ChangeNotifier {
       } else {
         const chunkSize = 500;
         for (int i = 0; i < bytes.length; i += chunkSize) {
-          final end = (i + chunkSize < bytes.length) ? i + chunkSize : bytes.length;
+          final end = (i + chunkSize < bytes.length)
+              ? i + chunkSize
+              : bytes.length;
           await _cmdChar!.write(bytes.sublist(i, end), withoutResponse: false);
           await Future.delayed(const Duration(milliseconds: 50));
         }
       }
-      debugPrint('[BLE] Sent ${bytes.length} bytes: '
-          '${command.substring(0, command.length.clamp(0, 60))}');
+      debugPrint(
+        '[BLE] Sent ${bytes.length} bytes: '
+        '${command.substring(0, command.length.clamp(0, 60))}',
+      );
       return true;
     } catch (e) {
       debugPrint('[BLE] Write error: $e');
@@ -296,7 +308,7 @@ class BLEService extends ChangeNotifier {
   }
 
   Future<bool> startLearnMode() => sendCommand(BLECommands.startLearn);
-  Future<bool> stopLearnMode()  => sendCommand(BLECommands.stopLearn);
+  Future<bool> stopLearnMode() => sendCommand(BLECommands.stopLearn);
 
   /// Send an IR button command to the ESP32 to transmit
   Future<bool> transmitButton(String key, IRButton button) =>
@@ -324,7 +336,9 @@ class BLEService extends ChangeNotifier {
       final end = (offset + chunkSize < profileJson.length)
           ? offset + chunkSize
           : profileJson.length;
-      final ok = await sendCommand('PROFILE_CHUNK:${profileJson.substring(offset, end)}');
+      final ok = await sendCommand(
+        'PROFILE_CHUNK:${profileJson.substring(offset, end)}',
+      );
       if (!ok) return false;
       offset = end;
       chunkNum++;
@@ -337,7 +351,9 @@ class BLEService extends ChangeNotifier {
 
     try {
       final response = await statusStream
-          .firstWhere((s) => s.startsWith('PROFILE_SAVED:') || s.startsWith('ERR:'))
+          .firstWhere(
+            (s) => s.startsWith('PROFILE_SAVED:') || s.startsWith('ERR:'),
+          )
           .timeout(const Duration(seconds: 10));
       if (response.startsWith('ERR:')) {
         debugPrint('[BLE] Profile save error: $response');
@@ -351,7 +367,11 @@ class BLEService extends ChangeNotifier {
     }
   }
 
-  Future<bool> sendDynamicConfig(DynamicConfig config, {String name = "Dynamic_AC", void Function(double progress)? onProgress}) async {
+  Future<bool> sendDynamicConfig(
+    DynamicConfig config, {
+    String name = "Dynamic_AC",
+    void Function(double progress)? onProgress,
+  }) async {
     final payload = config.toPayload();
     final totalSteps = payload.length + 2; // VAR_START + chunks + VAR_END
     int currentStep = 0;
@@ -399,14 +419,12 @@ class BLEService extends ChangeNotifier {
   Future<bool> deleteProfileOnDevice(String profileId) =>
       sendCommand('DELETE:$profileId');
 
-  Future<bool> clearDeviceConfig() =>
-      sendCommand('CLEAR_CONFIG');
+  Future<bool> clearDeviceConfig() => sendCommand('CLEAR_CONFIG');
 
   Future<bool> setTiming(int onMs, int offMs) =>
       sendCommand('SET_TIMING:$onMs:$offMs');
 
-  Future<bool> getTiming() =>
-      sendCommand('GET_TIMING');
+  Future<bool> getTiming() => sendCommand('GET_TIMING');
 
   Future<bool> setWiFi(String ssid, String pass) =>
       sendCommand('SET_WIFI:$ssid:$pass');
@@ -421,7 +439,9 @@ class BLEService extends ChangeNotifier {
     try {
       final button = await irButtonStream.first.timeout(timeout);
       await stopLearnMode();
-      debugPrint('[BLE] Capture success: ${button.isEncoded ? "encoded ${button.bits}bits" : "raw ${button.rawData?.length} values"}');
+      debugPrint(
+        '[BLE] Capture success: ${button.isEncoded ? "encoded ${button.bits}bits" : "raw ${button.rawData?.length} values"}',
+      );
       return button;
     } on TimeoutException {
       debugPrint('[BLE] Capture timed out');
