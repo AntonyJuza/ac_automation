@@ -901,12 +901,24 @@ class _LearnScreenState extends State<LearnScreen> {
           },
         );
         if (saved) {
+          await bleService.sendCommand('USE_ENC');
           debugPrint('[App] Dynamic config "$configName" uploaded to ESP32');
         } else {
           debugPrint('[App] Warning: Dynamic config upload failed');
         }
+      } else if (powerOn != null && !powerOn.isEncoded && powerOn.rawData != null) {
+        debugPrint('[App] power_on button is RAW — Uploading raw pattern...');
+        final onOk = await bleService.sendRawConfig('ON', powerOn.rawData!);
+        
+        if (onOk) {
+            final pOff = powerOff ?? powerOn;
+            if (pOff.rawData != null) {
+                await bleService.sendRawConfig('OFF', pOff.rawData!);
+            }
+            await bleService.sendCommand('USE_RAW');
+        }
       } else {
-        debugPrint('[App] power_on button is raw — Dynamic Config not sent');
+        debugPrint('[App] power_on button is missing or invalid — config not sent');
       }
     } else {
       debugPrint('[App] Not connected — profile saved locally only');

@@ -413,6 +413,66 @@ class BLEService extends ChangeNotifier {
     }
   }
 
+  Future<bool> sendRawConfig(String target, List<int> rawData) async {
+    const int chunkSize = 400; // Safe BLE chunk size
+
+    final startOk = await sendCommand('RAW_START:$target:${rawData.length}');
+    if (!startOk) return false;
+
+    // Wait for RAW_READY
+    try {
+      final response = await statusStream
+          .firstWhere((s) => s == 'RAW_READY' || s.startsWith('ERR:'))
+          .timeout(const Duration(seconds: 5));
+      if (response.startsWith('ERR:')) {
+        debugPrint('[BLE] RAW_START error: $response');
+        return false;
+      }
+    } on TimeoutException {
+      debugPrint('[BLE] RAW_READY confirmation timed out');
+      return false;
+    }
+
+    String fullCsv = rawData.join(',');
+    int offset = 0;
+    while (offset < fullCsv.length) {
+      int end = offset + chunkSize;
+      if (end > fullCsv.length) end = fullCsv.length;
+      
+      // Ensure we don't break in the middle of a number
+      if (end < fullCsv.length) {
+          while (end > offset && fullCsv[end] != ',') end--;
+          if (end == offset) end = offset + chunkSize;
+      }
+      
+      final chunkStr = fullCsv.substring(offset, end);
+      final ok = await sendCommand('RAW_CHUNK:$chunkStr');
+      if (!ok) return false;
+      
+      offset = end;
+      if (offset < fullCsv.length && fullCsv[offset] == ',') offset++;
+      await Future.delayed(const Duration(milliseconds: 30));
+    }
+
+    final endOk = await sendCommand('RAW_END');
+    if (!endOk) return false;
+
+    try {
+      final response = await statusStream
+          .firstWhere((s) => s == 'RAW_SAVED' || s.startsWith('ERR:'))
+          .timeout(const Duration(seconds: 10));
+      if (response.startsWith('ERR:')) {
+        debugPrint('[BLE] RAW_END error: $response');
+        return false;
+      }
+      debugPrint('[BLE] RAW pattern saved for $target: $response');
+      return true;
+    } on TimeoutException {
+      debugPrint('[BLE] RAW_SAVED confirmation timed out');
+      return false;
+    }
+  }
+
   Future<bool> setActiveProfile(String profileId) =>
       sendCommand('SET_ACTIVE:$profileId');
 

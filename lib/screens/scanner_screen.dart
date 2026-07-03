@@ -8,6 +8,7 @@ import 'package:ac_automation/services/ac_provider.dart';
 import 'package:ac_automation/services/ble_service.dart';
 import 'package:ac_automation/services/api_service.dart';
 import 'package:ac_automation/utils/constants.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 
 enum PipelineStep {
   scanning,
@@ -41,7 +42,11 @@ class _ScannerScreenState extends State<ScannerScreen>
   String? _pipelineError;
 
   // Wi-Fi inputs
-  String _selectedWifi = 'AVIO_Office_5G';
+  bool _useManualSsid = false;
+  String? _phoneWifiSsid;
+  bool _loadingWifiSsid = false;
+  final _manualSsidController = TextEditingController();
+  final _networkInfo = NetworkInfo();
   final _wifiPasswordController = TextEditingController();
 
   // Brand options
@@ -79,6 +84,7 @@ class _ScannerScreenState extends State<ScannerScreen>
   void dispose() {
     _manualIdController.dispose();
     _wifiPasswordController.dispose();
+    _manualSsidController.dispose();
     _laserController.dispose();
     _scannerController.dispose();
     _bleStatusSub?.cancel();
@@ -95,31 +101,43 @@ class _ScannerScreenState extends State<ScannerScreen>
     });
 
     try {
-      // Step 1: Check if the device exists in the cloud database
-      final deviceData = await ApiService.getDevice(_targetDeviceId);
       final acProvider = Provider.of<ACProvider>(context, listen: false);
 
-      if (deviceData != null) {
-        // Device exists in cloud! Add device to user's account and finish.
+      // Fetch fresh list of devices first to be sure
+      await acProvider.fetchCloudDevices();
+
+      // Check if it is already in the user's account
+      final alreadyClaimed = acProvider.cloudDevices.any(
+        (d) => d['deviceId']?.toString().toUpperCase() == _targetDeviceId,
+      );
+
+      if (alreadyClaimed) {
         setState(() {
-          _pipelineStatus = 'Device found in database! Claiming device...';
+          _pipelineStatus = 'Device already in your account. Selecting...';
         });
-        final claimed = await acProvider.claimCloudDevice(_targetDeviceId);
-        if (claimed) {
-          _completePipeline();
-        } else {
-          throw Exception('Failed to claim device in your profile.');
-        }
+        final dev = acProvider.cloudDevices.firstWhere(
+          (d) => d['deviceId']?.toString().toUpperCase() == _targetDeviceId,
+        );
+        acProvider.selectDevice(dev);
+        _completePipeline();
+        return;
+      }
+
+      // Try to claim the device directly (if it is already registered in the cloud database)
+      setState(() {
+        _pipelineStatus = 'Attempting to claim device...';
+      });
+      final claimed = await acProvider.claimCloudDevice(_targetDeviceId);
+
+      if (claimed) {
+        _completePipeline();
       } else {
-        // Device not found -> Scan BLE advertisements
+        // Not registered in cloud or not claimable -> Fall back to BLE setup
         _startBleFallback(isBrandNew: true);
       }
     } catch (e) {
-      setState(() {
-        _step = PipelineStep.scanning;
-        _pipelineError = e.toString().replaceAll('Exception: ', '');
-      });
-      _scannerController.start();
+      debugPrint('Error during cloud check: $e. Falling back to BLE...');
+      _startBleFallback(isBrandNew: true);
     }
   }
 
@@ -136,19 +154,26 @@ class _ScannerScreenState extends State<ScannerScreen>
     // Scan for nearby devices
     await bleService.startScan();
 
-    Timer(const Duration(seconds: 4), () async {
+    Timer(const Duration(seconds: 6), () async {
       await bleService.stopScan();
 
-      // Find BLE device with same Device ID
+      // Find BLE device with same Device ID (tolerating BLE vs Wi-Fi MAC offset)
       dynamic matchingResult;
+      final cleanTargetId = _targetDeviceId.replaceAll('AC_', '').replaceAll(':', '').toUpperCase();
+      final matchPrefix = cleanTargetId.length >= 10 
+          ? cleanTargetId.substring(0, 10) 
+          : cleanTargetId;
+
       for (final r in bleService.scanResults) {
         final name = r.device.platformName.isNotEmpty
             ? r.device.platformName
             : r.advertisementData.advName;
-        if (name.toUpperCase().contains(_targetDeviceId) ||
-            r.device.remoteId.toString().toUpperCase().contains(
-              _targetDeviceId,
-            )) {
+        
+        final cleanName = name.replaceAll('AC_', '').replaceAll(':', '').toUpperCase();
+        final cleanMac = r.device.remoteId.toString().replaceAll(':', '').toUpperCase();
+
+        if ((cleanName.isNotEmpty && cleanName.contains(matchPrefix)) ||
+            cleanMac.contains(matchPrefix)) {
           matchingResult = r;
           break;
         }
@@ -170,12 +195,12 @@ class _ScannerScreenState extends State<ScannerScreen>
             _pipelineStatus =
                 'Connected over Bluetooth. Please configure Wi-Fi.';
           });
+          _getPhoneWifiSsid();
         } catch (e) {
           setState(() {
             _step = PipelineStep.scanning;
             _pipelineError = 'Bluetooth connection failed: $e';
           });
-          _scannerController.start();
         }
       } else {
         setState(() {
@@ -183,22 +208,72 @@ class _ScannerScreenState extends State<ScannerScreen>
           _pipelineError =
               'Could not find local BLE signal for $_targetDeviceId. Make sure it is powered on.';
         });
-        _scannerController.start();
       }
     });
   }
 
+  Future<void> _getPhoneWifiSsid() async {
+    setState(() {
+      _loadingWifiSsid = true;
+      _pipelineError = null;
+    });
+
+    try {
+      var status = await Permission.location.status;
+      if (!status.isGranted) {
+        status = await Permission.location.request();
+      }
+
+      if (status.isGranted) {
+        final ssid = await _networkInfo.getWifiName();
+        setState(() {
+          if (ssid != null && ssid.isNotEmpty) {
+            var cleanSsid = ssid;
+            if (cleanSsid.startsWith('"') && cleanSsid.endsWith('"') && cleanSsid.length > 1) {
+              cleanSsid = cleanSsid.substring(1, cleanSsid.length - 1);
+            }
+            _phoneWifiSsid = cleanSsid;
+          } else {
+            _phoneWifiSsid = null;
+          }
+          _loadingWifiSsid = false;
+        });
+      } else {
+        setState(() {
+          _phoneWifiSsid = null;
+          _loadingWifiSsid = false;
+          _pipelineError = 'Location permission is required to detect Wi-Fi network.';
+        });
+      }
+    } catch (e) {
+      debugPrint('Error getting Wi-Fi SSID: $e');
+      setState(() {
+        _phoneWifiSsid = null;
+        _loadingWifiSsid = false;
+      });
+    }
+  }
+
   // --- Step 3: Wi-Fi Provisioning Dialog ---
   Future<void> _submitWifiProvisioning() async {
+    final ssid = _useManualSsid ? _manualSsidController.text.trim() : (_phoneWifiSsid ?? '');
     final pass = _wifiPasswordController.text;
+
+    if (ssid.isEmpty) {
+      setState(() {
+        _pipelineError = 'Wi-Fi SSID cannot be empty. Please select or enter a Wi-Fi network.';
+      });
+      return;
+    }
 
     setState(() {
       _step = PipelineStep.sendingWifi;
       _pipelineStatus = 'Sending Wi-Fi credentials via BLE...';
+      _pipelineError = null;
     });
 
     final bleService = Provider.of<BLEService>(context, listen: false);
-    final success = await bleService.setWiFi(_selectedWifi, pass);
+    final success = await bleService.setWiFi(ssid, pass);
 
     if (success) {
       setState(() {
@@ -231,8 +306,18 @@ class _ScannerScreenState extends State<ScannerScreen>
 
   void _checkIfDeviceClaimedSuccessfully() async {
     final acProvider = Provider.of<ACProvider>(context, listen: false);
-    // Claim it in backend profile
-    final claimed = await acProvider.claimCloudDevice(_targetDeviceId);
+
+    setState(() {
+      _pipelineStatus = 'Verifying connection & registering device...';
+    });
+
+    bool claimed = false;
+    // Retry up to 3 times with a 2-second delay between attempts
+    for (int i = 0; i < 3; i++) {
+      claimed = await acProvider.claimCloudDevice(_targetDeviceId);
+      if (claimed) break;
+      await Future.delayed(const Duration(seconds: 2));
+    }
 
     if (claimed) {
       // Check if it's a brand new device
@@ -254,9 +339,8 @@ class _ScannerScreenState extends State<ScannerScreen>
       setState(() {
         _step = PipelineStep.scanning;
         _pipelineError =
-            'Wi-Fi connection verified but profile registration failed.';
+            'Wi-Fi connection verified but profile registration failed (Device did not register in time).';
       });
-      _scannerController.start();
     }
   }
 
@@ -683,12 +767,33 @@ class _ScannerScreenState extends State<ScannerScreen>
     );
   }
 
-  // --- Step 3: Wi-Fi setup dropdown dialog ---
+  // --- Step 3: Wi-Fi setup dialog with Phone detection / Manual options ---
   Widget _buildWifiProvisioningUI() {
     return Column(
       key: const ValueKey('wifi_provisioning'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (_pipelineError != null) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: AppColors.statusRed.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.statusRed.withOpacity(0.2)),
+            ),
+            child: Text(
+              _pipelineError!,
+              style: const TextStyle(
+                color: AppColors.statusRed,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+
         const Text(
           'Configure AC Wi-Fi',
           style: TextStyle(
@@ -704,42 +809,215 @@ class _ScannerScreenState extends State<ScannerScreen>
         ),
         const SizedBox(height: 24),
 
-        // Dropdown scanned SSIDs
-        const Text(
-          'Select Wi-Fi Network',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
+        // Selector for "Phone Wi-Fi" vs "Enter Manually"
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 48,
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: AppColors.primaryBackground,
+            color: AppColors.secondaryBackground,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.textSecondary.withOpacity(0.3)),
+            border: Border.all(color: AppColors.textSecondary.withOpacity(0.15)),
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              value: _selectedWifi,
-              isExpanded: true,
-              items:
-                  [
-                        'AVIO_Office_5G',
-                        'Home_Network_Ext',
-                        'MyPrivateWifi',
-                        'Guest_Access_Open',
-                      ]
-                      .map(
-                        (val) => DropdownMenuItem(value: val, child: Text(val)),
-                      )
-                      .toList(),
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() => _selectedWifi = val);
-                }
-              },
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _useManualSsid = false;
+                      _pipelineError = null;
+                      if (_phoneWifiSsid == null) {
+                        _getPhoneWifiSsid();
+                      }
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: !_useManualSsid
+                          ? AppColors.primaryBrand
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Phone\'s Wi-Fi',
+                      style: TextStyle(
+                        color: !_useManualSsid ? Colors.white : AppColors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _useManualSsid = true;
+                      _pipelineError = null;
+                    });
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: _useManualSsid
+                          ? AppColors.primaryBrand
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'Enter Manually',
+                      style: TextStyle(
+                        color: _useManualSsid ? Colors.white : AppColors.textSecondary,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // SSID selector or manual input field
+        if (!_useManualSsid) ...[
+          const Text(
+            'Select Phone Wi-Fi Network',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBackground,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.textSecondary.withOpacity(0.2)),
+              boxShadow: [AppStyles.softShadow],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.wifi_lock, color: AppColors.primaryBrand, size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Connected Network',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      _loadingWifiSsid
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                color: AppColors.primaryBrand,
+                              ),
+                            )
+                          : Text(
+                              _phoneWifiSsid ?? 'Not detected',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: _phoneWifiSsid != null
+                                    ? AppColors.textPrimary
+                                    : AppColors.statusRed,
+                              ),
+                            ),
+                    ],
+                  ),
+                ),
+                if (!_loadingWifiSsid)
+                  IconButton(
+                    icon: const Icon(Icons.refresh, color: AppColors.primaryBrand, size: 22),
+                    onPressed: _getPhoneWifiSsid,
+                    constraints: const BoxConstraints(),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Refresh Wi-Fi',
+                  ),
+              ],
             ),
           ),
-        ),
+          if (_phoneWifiSsid == null && !_loadingWifiSsid) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.shade50,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.amber.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'No Wi-Fi Network Detected',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF78350F), // Dark amber
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Please verify that Wi-Fi is enabled on your phone and Location permissions are granted. Alternatively, switch to manual entry.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF78350F),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _useManualSsid = true;
+                      });
+                    },
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'Switch to Manual Entry',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primaryBrand,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ] else ...[
+          const Text(
+            'Enter Wi-Fi Network Name (SSID)',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _manualSsidController,
+            decoration: InputDecoration(
+              hintText: 'e.g. MyHomeNetwork',
+              prefixIcon: const Icon(Icons.wifi, color: AppColors.textSecondary),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              filled: true,
+              fillColor: AppColors.primaryBackground,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+          ),
+        ],
         const SizedBox(height: 20),
 
         // Password input
@@ -753,9 +1031,11 @@ class _ScannerScreenState extends State<ScannerScreen>
           obscureText: true,
           decoration: InputDecoration(
             hintText: 'Password',
+            prefixIcon: const Icon(Icons.lock_outline, color: AppColors.textSecondary),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             filled: true,
             fillColor: AppColors.primaryBackground,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
         ),
         const SizedBox(height: 40),
@@ -768,6 +1048,7 @@ class _ScannerScreenState extends State<ScannerScreen>
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
+            elevation: 2,
           ),
           child: const Text(
             'Provision Wi-Fi',

@@ -21,6 +21,7 @@ class _ControlScreenState extends State<ControlScreen>
     with TickerProviderStateMixin {
   late PageController _pageController;
   int _activeDeviceIndex = 0;
+  String? _activeDeviceId;
   Timer? _pollTimer;
 
   // AC States
@@ -87,6 +88,7 @@ class _ControlScreenState extends State<ControlScreen>
       if (index >= 0) {
         setState(() {
           _activeDeviceIndex = index;
+          _activeDeviceId = widget.profile.id;
         });
         _pageController.jumpToPage(index);
       }
@@ -115,6 +117,9 @@ class _ControlScreenState extends State<ControlScreen>
   void _onDeviceChanged(int index, ACProvider acProvider) {
     setState(() {
       _activeDeviceIndex = index;
+      if (acProvider.cloudDevices.length > index) {
+        _activeDeviceId = acProvider.cloudDevices[index]['deviceId'];
+      }
     });
     final dev = acProvider.cloudDevices[index];
     acProvider.selectDevice(dev);
@@ -533,6 +538,19 @@ class _ControlScreenState extends State<ControlScreen>
   Widget build(BuildContext context) {
     final acProvider = Provider.of<ACProvider>(context);
     final deviceList = acProvider.cloudDevices;
+
+    // Keep _activeDeviceIndex synchronized with _activeDeviceId if the list changes/shuffles
+    if (_activeDeviceId != null && deviceList.isNotEmpty) {
+      final idx = deviceList.indexWhere((d) => d['deviceId'] == _activeDeviceId);
+      if (idx >= 0 && idx != _activeDeviceIndex) {
+        _activeDeviceIndex = idx;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_pageController.hasClients) {
+            _pageController.jumpToPage(idx);
+          }
+        });
+      }
+    }
 
     final activeDevice = deviceList.isNotEmpty
         ? deviceList[_activeDeviceIndex]
@@ -1276,10 +1294,19 @@ class _CircularTempSliderState extends State<_CircularTempSlider> {
       angleDeg += 360;
     }
 
-    // Align angle with sweep boundaries [140, 400]
+    // Split bottom gap (40 to 140) at 90 degrees to prevent sudden jumping:
+    // Left of 90 degrees snaps to 140 (16.0°C), right of 90 degrees snaps to 400 (30.0°C).
     double normalizedAngle = angleDeg;
-    if (normalizedAngle < 120) {
-      normalizedAngle += 360;
+    if (normalizedAngle < 90.0) {
+      if (normalizedAngle >= 40.0) {
+        normalizedAngle = 400.0;
+      } else {
+        normalizedAngle += 360;
+      }
+    } else {
+      if (normalizedAngle < 140.0) {
+        normalizedAngle = 140.0;
+      }
     }
 
     final clampedAngle = normalizedAngle.clamp(140.0, 400.0);
@@ -1321,14 +1348,75 @@ class _CircularTempSliderState extends State<_CircularTempSlider> {
                 Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      widget.isPowerOn ? _currentTemp.toStringAsFixed(0) : "--",
-                      style: const TextStyle(
-                        fontSize: 58,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -1,
-                      ),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.isPowerOn)
+                          GestureDetector(
+                            onTap: () {
+                              if (_currentTemp > 16.0) {
+                                final newTemp = (_currentTemp - 1.0).clamp(16.0, 30.0);
+                                setState(() {
+                                  _currentTemp = newTemp;
+                                });
+                                widget.onTemperatureChanged(_currentTemp);
+                                if (widget.onTemperatureChangeEnd != null) {
+                                  widget.onTemperatureChangeEnd!(_currentTemp);
+                                }
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.05),
+                              ),
+                              child: const Icon(
+                                Icons.remove,
+                                color: AppColors.textSecondary,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(width: 14),
+                        Text(
+                          widget.isPowerOn ? _currentTemp.toStringAsFixed(0) : "--",
+                          style: const TextStyle(
+                            fontSize: 58,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -1,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        if (widget.isPowerOn)
+                          GestureDetector(
+                            onTap: () {
+                              if (_currentTemp < 30.0) {
+                                final newTemp = (_currentTemp + 1.0).clamp(16.0, 30.0);
+                                setState(() {
+                                  _currentTemp = newTemp;
+                                });
+                                widget.onTemperatureChanged(_currentTemp);
+                                if (widget.onTemperatureChangeEnd != null) {
+                                  widget.onTemperatureChangeEnd!(_currentTemp);
+                                }
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.05),
+                              ),
+                              child: const Icon(
+                                Icons.add,
+                                color: AppColors.textSecondary,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
