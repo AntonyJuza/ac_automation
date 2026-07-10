@@ -10,6 +10,8 @@ import 'package:ac_automation/screens/register_screen.dart';
 import 'package:ac_automation/screens/forgot_screen.dart';
 import 'package:ac_automation/screens/profile_screen.dart';
 import 'package:ac_automation/screens/scanner_screen.dart';
+import 'package:ac_automation/screens/brand_select_screen.dart';
+import 'package:ac_automation/screens/cloud_profile_test_screen.dart';
 import 'package:go_router/go_router.dart';
 
 import 'package:provider/provider.dart';
@@ -79,6 +81,19 @@ class ACAutomationApp extends StatelessWidget {
               GoRoute(
                 path: '/setup',
                 builder: (context, state) => const SetupScreen(),
+              ),
+              GoRoute(
+                path: '/brand-select',
+                builder: (context, state) => const BrandSelectScreen(),
+              ),
+              GoRoute(
+                path: '/cloud-test',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>;
+                  return CloudProfileTestScreen(
+                    brand: extra['brand'],
+                  );
+                },
               ),
               GoRoute(
                 path: '/learn',

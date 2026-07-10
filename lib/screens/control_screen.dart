@@ -344,7 +344,7 @@ class _ControlScreenState extends State<ControlScreen>
                   ],
                   const SizedBox(height: 20),
 
-                  // Brand selection dropdown
+                  // Brand selection — tap to change
                   const Text(
                     'Active Brand Preset',
                     style: TextStyle(
@@ -354,38 +354,59 @@ class _ControlScreenState extends State<ControlScreen>
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.04),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.black.withOpacity(0.12)),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: configBrand,
-                        dropdownColor: AppColors.primaryBackground,
-                        style: const TextStyle(color: AppColors.textPrimary),
-                        items: brands
-                            .map(
-                              (b) => DropdownMenuItem(
-                                value: b,
-                                child: Text(
-                                  b,
-                                  style: const TextStyle(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(dialogCtx);
+                      context.push('/brand-select');
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.black.withOpacity(0.12),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.ac_unit,
+                            size: 18,
+                            color: AppColors.primaryBrand,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              configBrand,
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontWeight: FontWeight.w600,
                               ),
-                            )
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) {
-                            setDialogState(() {
-                              configBrand = val;
-                            });
-                          }
-                        },
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBrand.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text(
+                              'Change',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryBrand,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -454,7 +475,7 @@ class _ControlScreenState extends State<ControlScreen>
                   OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(dialogCtx);
-                      context.push('/setup');
+                      context.push('/brand-select');
                     },
                     icon: const Icon(
                       Icons.settings_remote_outlined,
@@ -462,7 +483,7 @@ class _ControlScreenState extends State<ControlScreen>
                       color: AppColors.primaryBrand,
                     ),
                     label: const Text(
-                      'Re-launch IR Learning Wizard',
+                      'Change AC / Re-learn IR',
                       style: TextStyle(color: AppColors.primaryBrand),
                     ),
                     style: OutlinedButton.styleFrom(

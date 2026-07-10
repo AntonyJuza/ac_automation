@@ -28,5 +28,7 @@ class BLEConstants {
 }
 
 class APIConstants {
-  static const String baseUrl = "https://iot.techenablesme.com/api";
+  static const String baseUrl = "http://iot.techenablesme.com:3000/api";
 }
+
+

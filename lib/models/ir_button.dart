@@ -75,7 +75,9 @@ class IRButton {
     return IRButton(
       name: json['name'] ?? '',
       method: IRMethod.raw,
-      rawData: json['rawData'] != null ? List<int>.from(json['rawData']) : null,
+      rawData: json['rawData'] != null
+          ? List<int>.from(json['rawData'])
+          : (json['pattern'] != null ? List<int>.from(json['pattern']) : null),
     );
   }
 

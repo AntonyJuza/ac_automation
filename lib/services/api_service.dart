@@ -381,4 +381,39 @@ class ApiService {
       return false;
     }
   }
+
+  /// Send an IR command to a device via cloud/MQTT.
+  /// Used by cloud profile testing to transmit IR button patterns.
+  static Future<bool> sendIRCommand({
+    required String deviceId,
+    required dynamic button,
+    required String key,
+  }) async {
+    try {
+      final url = Uri.parse(
+        '${APIConstants.baseUrl}/devices/$deviceId/ir-send',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('jwt_token');
+
+      final body = {
+        'key': key,
+        'button': button is Map ? button : (button as dynamic).toJson(),
+      };
+
+      final response = await http.post(
+        url,
+        headers: {
+          'Content-Type': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(body),
+      );
+      _checkResponse(response);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Send IR Command Error: $e');
+      return false;
+    }
+  }
 }
